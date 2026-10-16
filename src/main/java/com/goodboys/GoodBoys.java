@@ -2,6 +2,8 @@ package com.goodboys;
 
 import org.slf4j.Logger;
 
+import com.goodboys.registry.ModEntities;
+import com.goodboys.registry.ModItems;
 import com.mojang.logging.LogUtils;
 
 import net.minecraft.resources.ResourceLocation;
@@ -15,7 +17,8 @@ public class GoodBoys {
     public static final Logger LOGGER = LogUtils.getLogger();
 
     public GoodBoys(IEventBus modEventBus, ModContainer modContainer) {
-        // Registries (entities, items, blocks, menus, network payloads) are wired in here as features land.
+        ModEntities.register(modEventBus);
+        ModItems.register(modEventBus);
     }
 
     public static ResourceLocation id(String path) {
