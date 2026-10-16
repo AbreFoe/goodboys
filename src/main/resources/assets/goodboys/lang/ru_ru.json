@@ -92,5 +92,15 @@
   "message.goodboys.field_kit_used": "%s подлатал себя полевой аптечкой!",
   "gui.goodboys.tracker.elsewhere": "в другом измерении",
   "gui.goodboys.tracker.blocks": "бл.",
-  "gui.goodboys.tracker.downed": "без сознания!"
+  "gui.goodboys.tracker.downed": "без сознания!",
+  "gui.goodboys.wheel_hint": "Наведи и отпусти · 1-8 · можно идти",
+  "gui.goodboys.command.follow.info": "Идёт за тобой и защищает",
+  "gui.goodboys.command.stay.info": "Ждёт возле этого места",
+  "gui.goodboys.command.sit.info": "Садится, со временем засыпает",
+  "gui.goodboys.command.guard.info": "Патрулирует место и бьёт монстров",
+  "gui.goodboys.command.go_to.info": "Бежит туда, куда смотришь, и ждёт",
+  "gui.goodboys.command.attack.info": "Бросается на то, на что смотришь",
+  "gui.goodboys.command.hunt.info": "Идёт за тобой и охотится на дичь",
+  "gui.goodboys.command.find.info": "Пока не готово",
+  "gui.goodboys.look.order": "%s"
 }

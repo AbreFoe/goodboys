@@ -3,6 +3,7 @@ package com.goodboys.client;
 import com.goodboys.GoodBoys;
 import com.goodboys.registry.ModEntities;
 import com.goodboys.registry.ModMenus;
+import com.goodboys.registry.ModParticles;
 import com.goodboys.registry.ModRecipes;
 
 import net.minecraft.client.RecipeBookCategories;
@@ -13,6 +14,7 @@ import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.RegisterGuiLayersEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
+import net.neoforged.neoforge.client.event.RegisterParticleProvidersEvent;
 import net.neoforged.neoforge.client.event.RegisterRecipeBookCategoriesEvent;
 
 // Client-only entry point: renderers, keybinds and screens live under this package.
@@ -23,6 +25,7 @@ public class GoodBoysClient {
         modBus.addListener(GoodBoysClient::registerScreens);
         modBus.addListener(GoodBoysClient::registerRecipeBook);
         modBus.addListener(GoodBoysClient::registerHud);
+        modBus.addListener(GoodBoysClient::registerParticles);
         ClientEvents.register(modBus);
     }
 
@@ -36,8 +39,14 @@ public class GoodBoysClient {
         event.registerRecipeCategoryFinder(ModRecipes.DOG_WORKBENCH.get(), recipe -> RecipeBookCategories.UNKNOWN);
     }
 
+    private static void registerParticles(RegisterParticleProvidersEvent event) {
+        event.registerSpriteSet(ModParticles.SLEEP_Z.get(), DogParticles.SleepProvider::new);
+        event.registerSpriteSet(ModParticles.DIZZY_STAR.get(), DogParticles.StarProvider::new);
+    }
+
     private static void registerHud(RegisterGuiLayersEvent event) {
         event.registerAboveAll(GoodBoys.id("tracker"), TrackerHud::render);
+        event.registerAboveAll(GoodBoys.id("look"), DogLookHud::render);
     }
 
     private static void registerRenderers(EntityRenderersEvent.RegisterRenderers event) {

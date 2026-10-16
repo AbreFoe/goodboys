@@ -15,9 +15,11 @@ import com.goodboys.item.DogArmorItem;
 import com.goodboys.item.DogUpgrade;
 import com.goodboys.pack.PackData;
 import com.goodboys.registry.ModGameRules;
+import com.goodboys.registry.ModParticles;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
+import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
@@ -81,8 +83,10 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.ServerLevelAccessor;
+import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.gameevent.GameEvent;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.event.EventHooks;
 import software.bernie.geckolib.animatable.GeoEntity;
 import software.bernie.geckolib.animatable.instance.AnimatableInstanceCache;
@@ -529,6 +533,7 @@ public class Dog extends TamableAnimal implements GeoEntity {
         setHealth((float) Math.max(4.0, getMaxHealth() * 0.3));
         level().broadcastEntityEvent(this, (byte) 7); // hearts
         playSound(SoundEvents.WOLF_AMBIENT, 1.0F, 1.2F);
+        playSound(SoundEvents.AMETHYST_BLOCK_CHIME, 1.0F, 1.0F);
     }
 
     private void tickDowned() {
@@ -616,6 +621,7 @@ public class Dog extends TamableAnimal implements GeoEntity {
         playSound(SoundEvents.PLAYER_LEVELUP, 0.6F, 1.6F);
         if (level() instanceof ServerLevel serverLevel) {
             serverLevel.sendParticles(ParticleTypes.HAPPY_VILLAGER, getX(), getY() + getBbHeight() * 0.7, getZ(), 14, 0.4, 0.35, 0.4, 0.0);
+            serverLevel.sendParticles(ParticleTypes.END_ROD, getX(), getY() + getBbHeight() * 0.5, getZ(), 24, 0.1, 0.1, 0.1, 0.12);
         }
         if (getOwner() instanceof Player owner) {
             String key = level >= DogLevels.MAX_LEVEL ? "message.goodboys.max_level" : "message.goodboys.level_up";
@@ -735,6 +741,10 @@ public class Dog extends TamableAnimal implements GeoEntity {
      */
     public void command(DogCommand command, @Nullable BlockPos pos, @Nullable LivingEntity target) {
         setNapping(false);
+        if (command != DogCommand.SIT && command != DogCommand.FIND) {
+            triggerAnim("actions", "bark"); // "on it!"
+            playSound(SoundEvents.WOLF_AMBIENT, 0.6F, 1.15F + random.nextFloat() * 0.2F);
+        }
         if (command == DogCommand.SIT) {
             setOrderedToSit(true);
             setInSittingPose(true);
@@ -995,6 +1005,28 @@ public class Dog extends TamableAnimal implements GeoEntity {
                 airTicks = 0;
             } else {
                 airTicks++;
+            }
+            tickClientEffects();
+        }
+    }
+
+    /** Purely visual: Zzz while napping, stars while knocked out, dust kicked up while running. */
+    private void tickClientEffects() {
+        Vec3 eye = getEyePosition();
+        if (isNapping() && tickCount % 34 == 0) {
+            level().addParticle(ModParticles.SLEEP_Z.get(), eye.x + (random.nextDouble() - 0.5) * 0.2, eye.y + 0.25, eye.z + (random.nextDouble() - 0.5) * 0.2, 0, 0, 0);
+        }
+        if (isDowned() && tickCount % 5 == 0) {
+            level().addParticle(ModParticles.DIZZY_STAR.get(), eye.x, eye.y + 0.35 - getBbHeight() * 0.4, eye.z, random.nextDouble() * Mth.TWO_PI, 0, 0);
+        }
+        double dx = getX() - xo;
+        double dz = getZ() - zo;
+        if (onGround() && !isInWater() && dx * dx + dz * dz > 0.04 && tickCount % 2 == 0) {
+            BlockState below = level().getBlockState(getOnPos());
+            if (below.getRenderShape() != RenderShape.INVISIBLE) {
+                level().addParticle(new BlockParticleOption(ParticleTypes.BLOCK, below).setPos(getOnPos()),
+                        getX() + (random.nextDouble() - 0.5) * getBbWidth(), getY() + 0.1, getZ() + (random.nextDouble() - 0.5) * getBbWidth(),
+                        -dx * 2, 0.15, -dz * 2);
             }
         }
     }

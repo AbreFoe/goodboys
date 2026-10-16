@@ -92,5 +92,15 @@
   "message.goodboys.field_kit_used": "%s patched themselves up with the field kit!",
   "gui.goodboys.tracker.elsewhere": "in another dimension",
   "gui.goodboys.tracker.blocks": "blocks",
-  "gui.goodboys.tracker.downed": "knocked out!"
+  "gui.goodboys.tracker.downed": "knocked out!",
+  "gui.goodboys.wheel_hint": "Point and let go · 1-8 · you can keep walking",
+  "gui.goodboys.command.follow.info": "Follows you and defends you",
+  "gui.goodboys.command.stay.info": "Waits around this spot",
+  "gui.goodboys.command.sit.info": "Sits down, dozes off after a while",
+  "gui.goodboys.command.guard.info": "Patrols this spot and fights monsters",
+  "gui.goodboys.command.go_to.info": "Runs to where you look and waits there",
+  "gui.goodboys.command.attack.info": "Goes for what you look at",
+  "gui.goodboys.command.hunt.info": "Follows you and hunts game nearby",
+  "gui.goodboys.command.find.info": "Not ready yet",
+  "gui.goodboys.look.order": "%s"
 }

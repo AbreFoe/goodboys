@@ -49,6 +49,13 @@ public class DogScreen extends AbstractContainerScreen<DogMenu> {
         Dog dog = menu.getDog();
         if (dog != null) {
             InventoryScreen.renderEntityInInventoryFollowsMouse(graphics, x + 26, y + 18, x + 78, y + 70, 17, 0.25F, mouseX, mouseY, dog);
+            // health and experience along the bottom of the preview
+            float hp = Mth.clamp(dog.getHealth() / dog.getMaxHealth(), 0, 1);
+            int level = dog.getDogLevel();
+            float xp = level >= DogLevels.MAX_LEVEL ? 1 : dog.getXp() / (float) Math.max(1, DogLevels.xpToNext(level));
+            graphics.fill(x + 27, y + 63, x + 77, y + 69, 0xA0000000);
+            graphics.fill(x + 28, y + 64, x + 28 + Math.round(48 * hp), y + 66, hp > 0.5F ? 0xFF55DD55 : hp > 0.25F ? 0xFFE8C040 : 0xFFE04040);
+            graphics.fill(x + 28, y + 67, x + 28 + Math.round(48 * Mth.clamp(xp, 0, 1)), y + 68, 0xFF7FDF3F);
         }
     }
 

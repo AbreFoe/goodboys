@@ -8,6 +8,7 @@ import com.goodboys.registry.ModEntities;
 import com.goodboys.registry.ModGameRules;
 import com.goodboys.registry.ModItems;
 import com.goodboys.registry.ModMenus;
+import com.goodboys.registry.ModParticles;
 import com.goodboys.registry.ModRecipes;
 import com.mojang.logging.LogUtils;
 
@@ -29,6 +30,7 @@ public class GoodBoys {
         ModMenus.register(modEventBus);
         ModRecipes.register(modEventBus);
         ModNetwork.register(modEventBus);
+        ModParticles.register(modEventBus);
     }
 
     public static ResourceLocation id(String path) {

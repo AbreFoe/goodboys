@@ -7,6 +7,8 @@ import com.goodboys.registry.ModMenus;
 import com.goodboys.registry.ModRecipes;
 
 import net.minecraft.core.NonNullList;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.Container;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
@@ -137,6 +139,7 @@ public class DogWorkbenchMenu extends AbstractContainerMenu {
         @Override
         public void onTake(Player taker, ItemStack stack) {
             stack.onCraftedBy(taker.level(), taker, stack.getCount());
+            access.execute((level, pos) -> level.playSound(null, pos, SoundEvents.VILLAGER_WORK_LEATHERWORKER, SoundSource.BLOCKS, 1.0F, 1.0F));
             CraftingInput.Positioned positioned = craftSlots.asPositionedCraftInput();
             CraftingInput input = positioned.input();
             NonNullList<ItemStack> remaining = currentRecipe(taker.level())
