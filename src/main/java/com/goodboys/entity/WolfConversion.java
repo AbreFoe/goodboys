@@ -36,11 +36,13 @@ public final class WolfConversion {
         }
         boolean sitting = wolf.isOrderedToSit();
         float health = wolf.getHealth() / wolf.getMaxHealth();
+        DogVariant variant = DogVariant.fromWolf(wolf.getVariant());
 
         Dog dog = wolf.convertTo(ModEntities.DOG.get(), false);
         if (dog == null) {
             return null;
         }
+        dog.setVariant(variant);
         dog.setTame(true, true);
         dog.setOwnerUUID(wolf.getOwnerUUID());
         PackData.get(dog.level().getServer()).add(wolf.getOwnerUUID(), dog.getUUID());

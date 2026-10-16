@@ -42,10 +42,13 @@ import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.damagesource.DamageTypes;
+import net.minecraft.world.DifficultyInstance;
 import net.minecraft.world.entity.AgeableMob;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.MobSpawnType;
+import net.minecraft.world.entity.SpawnGroupData;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.TamableAnimal;
 import net.minecraft.world.entity.ai.attributes.Attribute;
@@ -77,6 +80,7 @@ import net.minecraft.world.food.FoodProperties;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.ServerLevelAccessor;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.gameevent.GameEvent;
 import net.neoforged.neoforge.event.EventHooks;
@@ -124,6 +128,8 @@ public class Dog extends TamableAnimal implements GeoEntity {
             SynchedEntityData.defineId(Dog.class, EntityDataSerializers.ITEM_STACK);
     private static final EntityDataAccessor<ItemStack> DATA_HEAD =
             SynchedEntityData.defineId(Dog.class, EntityDataSerializers.ITEM_STACK);
+    private static final EntityDataAccessor<Integer> DATA_VARIANT =
+            SynchedEntityData.defineId(Dog.class, EntityDataSerializers.INT);
 
     public static final int GEAR_HEAD = 0;
     public static final int GEAR_ARMOR = 1;
@@ -281,6 +287,24 @@ public class Dog extends TamableAnimal implements GeoEntity {
         builder.define(DATA_DOWNED, false);
         builder.define(DATA_ARMOR, ItemStack.EMPTY);
         builder.define(DATA_HEAD, ItemStack.EMPTY);
+        builder.define(DATA_VARIANT, DogVariant.SHEPHERD.ordinal());
+    }
+
+    // ------------------------------------------------------------------ coat
+
+    public DogVariant getVariant() {
+        return DogVariant.byId(entityData.get(DATA_VARIANT));
+    }
+
+    public void setVariant(DogVariant variant) {
+        entityData.set(DATA_VARIANT, variant.ordinal());
+    }
+
+    @Override
+    public SpawnGroupData finalizeSpawn(ServerLevelAccessor level, DifficultyInstance difficulty, MobSpawnType spawnType,
+                                        @Nullable SpawnGroupData spawnGroupData) {
+        setVariant(DogVariant.random(random));
+        return super.finalizeSpawn(level, difficulty, spawnType, spawnGroupData);
     }
 
     // ------------------------------------------------------------------ equipment
@@ -1191,6 +1215,7 @@ public class Dog extends TamableAnimal implements GeoEntity {
         tag.putInt("Xp", getXp());
         tag.putInt("CompanionTicks", companionTicks);
         tag.putBoolean("Downed", isDowned());
+        tag.putString("Variant", getVariant().id());
         tag.putInt("DownedTicks", downedTicks);
         // with slot numbers: SimpleContainer#createTag would lose which slot each item was in
         tag.put("Gear", ContainerHelper.saveAllItems(new CompoundTag(), gear.getItems(), registryAccess()));
@@ -1212,6 +1237,11 @@ public class Dog extends TamableAnimal implements GeoEntity {
         entityData.set(DATA_XP, Math.max(0, tag.getInt("Xp")));
         companionTicks = tag.getInt("CompanionTicks");
         entityData.set(DATA_DOWNED, tag.getBoolean("Downed"));
+        for (DogVariant variant : DogVariant.values()) {
+            if (variant.id().equals(tag.getString("Variant"))) {
+                setVariant(variant);
+            }
+        }
         downedTicks = tag.getInt("DownedTicks");
         gear.clearContent();
         bag.clearContent();

@@ -6,6 +6,8 @@ import java.util.List;
 import com.goodboys.GoodBoys;
 import com.goodboys.entity.Dog;
 import com.goodboys.entity.DogLevels;
+import com.goodboys.entity.DogVariant;
+import com.goodboys.entity.WolfConversion;
 import com.goodboys.item.DogAccessoryItem.Accessory;
 import com.goodboys.item.DogArmorItem;
 import com.goodboys.item.DogUpgrade;
@@ -13,11 +15,14 @@ import com.goodboys.registry.ModEntities;
 import com.goodboys.registry.ModItems;
 import com.goodboys.registry.ModRecipes;
 
+import net.minecraft.core.registries.Registries;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.animal.Wolf;
+import net.minecraft.world.entity.animal.WolfVariants;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.monster.Zombie;
 import net.minecraft.world.item.ItemStack;
@@ -114,6 +119,23 @@ public class GearGameTests {
         helper.assertTrue(copy.hasUpgrade(DogUpgrade.BAG) && copy.hasUpgrade(DogUpgrade.TRACKER), "upgrades were not saved");
         helper.assertTrue(copy.getBag().getItem(3).getCount() == 7, "saddlebag contents were not saved");
         helper.assertTrue(copy.getAttributeValue(Attributes.ARMOR) == 9.0, "loaded dog has the wrong armour value");
+        helper.succeed();
+    }
+
+    @GameTest(template = "arena")
+    public static void coatColourIsKeptAndComesFromTheWolf(GameTestHelper helper) {
+        Dog dog = tamedDog(helper, 4, 4);
+        dog.setVariant(DogVariant.BLACK);
+        CompoundTag tag = new CompoundTag();
+        dog.saveWithoutId(tag);
+        Dog copy = ModEntities.DOG.get().create(helper.getLevel());
+        copy.load(tag);
+        helper.assertTrue(copy.getVariant() == DogVariant.BLACK, "coat colour was not saved");
+
+        Wolf wolf = helper.spawn(EntityType.WOLF, 2, 2, 2);
+        wolf.setVariant(helper.getLevel().registryAccess().registryOrThrow(Registries.WOLF_VARIANT).getHolderOrThrow(WolfVariants.SNOWY));
+        Dog converted = WolfConversion.convert(wolf);
+        helper.assertTrue(converted != null && converted.getVariant() == DogVariant.WHITE, "a snowy wolf should become a white shepherd");
         helper.succeed();
     }
 
