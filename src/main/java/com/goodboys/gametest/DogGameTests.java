@@ -3,7 +3,9 @@ package com.goodboys.gametest;
 import com.goodboys.GoodBoys;
 import com.goodboys.entity.Dog;
 import com.goodboys.entity.DogCommand;
+import com.goodboys.entity.DogLevels;
 import com.goodboys.entity.DogMode;
+import com.goodboys.pack.PackData;
 import com.goodboys.registry.ModEntities;
 
 import net.minecraft.core.BlockPos;
@@ -108,6 +110,59 @@ public class DogGameTests {
         BlockPos spot = helper.absolutePos(new BlockPos(6, 2, 6));
         helper.runAfterDelay(5, () -> dog.command(DogCommand.GO_TO, spot, null));
         helper.succeedWhen(() -> helper.assertTrue(dog.distanceToSqr(spot.getCenter()) < 2.0 * 2.0, "dog did not walk to the spot"));
+    }
+
+    @GameTest(template = "arena")
+    public static void experienceLevelsUpAndRaisesStats(GameTestHelper helper) {
+        Dog dog = tamedDog(helper, 4, 2, 4);
+        helper.assertTrue(dog.getDogLevel() == 1, "new dog is not level 1");
+        helper.assertTrue(dog.getMaxHealth() == (float) DogLevels.TAMED_HEALTH, "tamed dog has the wrong health");
+
+        dog.killedEntity(helper.getLevel(), helper.spawn(EntityType.ZOMBIE, 2, 2, 2));
+        helper.assertTrue(dog.getXp() > 0, "a kill gave no experience");
+
+        dog.addExperience(DogLevels.totalXpFor(10));
+        helper.assertTrue(dog.getDogLevel() == 10, "expected level 10, got " + dog.getDogLevel());
+        helper.assertTrue(dog.getMaxHealth() == (float) DogLevels.maxHealth(10, true), "health did not grow with the level");
+        helper.assertTrue(dog.getHealth() == dog.getMaxHealth(), "level up did not heal");
+
+        dog.addExperience(100_000);
+        helper.assertTrue(dog.getDogLevel() == DogLevels.MAX_LEVEL && dog.getXp() == 0, "level is not capped at " + DogLevels.MAX_LEVEL);
+        helper.succeed();
+    }
+
+    @GameTest(template = "arena", timeoutTicks = 80)
+    public static void packHoldsFiveDogsAndFreesSlots(GameTestHelper helper) {
+        ServerPlayer owner = helper.makeMockServerPlayerInLevel();
+        owner.moveTo(helper.absoluteVec(new Vec3(4.5, 2, 4.5)));
+        Dog[] dogs = new Dog[PackData.MAX_PACK_SIZE + 1];
+        for (int i = 0; i < dogs.length; i++) {
+            dogs[i] = helper.spawn(ModEntities.DOG.get(), 1 + i, 2, 6);
+        }
+        for (int i = 0; i < PackData.MAX_PACK_SIZE; i++) {
+            helper.assertTrue(dogs[i].tameIfPackHasRoom(owner), "dog " + (i + 1) + " could not join the pack");
+        }
+        Dog extra = dogs[PackData.MAX_PACK_SIZE];
+        helper.assertFalse(extra.tameIfPackHasRoom(owner), "a sixth dog joined the pack");
+        helper.assertFalse(extra.isTame(), "the sixth dog got tamed anyway");
+
+        // a wolf tamed while the pack is full stays a vanilla wolf until a slot frees up
+        Wolf wolf = helper.spawn(EntityType.WOLF, 7, 2, 2);
+        wolf.tame(owner);
+
+        dogs[0].release();
+        helper.assertFalse(dogs[0].isTame(), "released dog is still tame");
+        helper.assertTrue(extra.tameIfPackHasRoom(owner), "releasing a dog did not free a slot");
+
+        helper.runAfterDelay(5, () -> {
+            helper.assertEntityPresent(EntityType.WOLF); // pack full: the wolf waits as a wolf
+            dogs[1].kill();
+        });
+        helper.runAfterDelay(40, () -> {
+            helper.assertEntityNotPresent(EntityType.WOLF); // the dead dog's slot went to the waiting wolf
+            helper.assertTrue(PackData.get(helper.getLevel().getServer()).size(owner.getUUID()) == PackData.MAX_PACK_SIZE, "pack size is off");
+            helper.succeed();
+        });
     }
 
     @GameTest(template = "arena", timeoutTicks = Dog.NAP_DELAY_TICKS + 100)

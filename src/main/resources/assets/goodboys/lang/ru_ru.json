@@ -17,5 +17,15 @@
   "message.goodboys.no_dogs": "Рядом нет твоих собак, они тебя не слышат",
   "message.goodboys.no_spot": "Посмотри туда, куда им идти",
   "message.goodboys.no_target": "Посмотри на того, кого взять",
-  "message.goodboys.commanded": "%s: %s"
+  "message.goodboys.commanded": "%s: %s",
+  "gui.goodboys.level": "Уровень %s",
+  "gui.goodboys.level_max": "Уровень %s (макс.)",
+  "message.goodboys.level_up": "%s получает уровень %s!",
+  "message.goodboys.max_level": "%s достигает уровня %s, это предел! Хороший мальчик!",
+  "message.goodboys.status": "%s · уровень %s · %s · ❤ %s/%s",
+  "message.goodboys.status.xp": "опыт %s/%s",
+  "message.goodboys.status.max": "макс. уровень",
+  "message.goodboys.pack_full": "Стая полна (%s собак). Сначала отпусти одну: Shift + ножницы, два раза",
+  "message.goodboys.release_confirm": "Повтори в течение 3 секунд, чтобы отпустить: %s",
+  "message.goodboys.released": "%s теперь на свободе"
 }

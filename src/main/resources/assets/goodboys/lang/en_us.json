@@ -17,5 +17,15 @@
   "message.goodboys.no_dogs": "None of your dogs are close enough to hear you",
   "message.goodboys.no_spot": "Look at the spot you want them to go to",
   "message.goodboys.no_target": "Look at what you want them to attack",
-  "message.goodboys.commanded": "%s: %s"
+  "message.goodboys.commanded": "%s: %s",
+  "gui.goodboys.level": "Level %s",
+  "gui.goodboys.level_max": "Level %s (max)",
+  "message.goodboys.level_up": "%s reached level %s!",
+  "message.goodboys.max_level": "%s reached level %s, the highest there is! Good boy!",
+  "message.goodboys.status": "%s · level %s · %s · ❤ %s/%s",
+  "message.goodboys.status.xp": "xp %s/%s",
+  "message.goodboys.status.max": "max level",
+  "message.goodboys.pack_full": "Your pack is full (%s dogs). Release one first: sneak + use shears on it twice",
+  "message.goodboys.release_confirm": "Do it again within 3 seconds to release %s",
+  "message.goodboys.released": "%s is free now"
 }

@@ -1,16 +1,20 @@
 package com.goodboys.entity;
 
+import java.util.UUID;
+
 import javax.annotation.Nullable;
 
 import com.goodboys.GoodBoys;
 import com.goodboys.entity.ai.DogAreaGoal;
 import com.goodboys.entity.ai.DogBegGoal;
 import com.goodboys.entity.ai.DogPlayGoal;
+import com.goodboys.pack.PackData;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
@@ -19,6 +23,7 @@ import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.tags.TagKey;
+import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.damagesource.DamageSource;
@@ -90,6 +95,12 @@ public class Dog extends TamableAnimal implements GeoEntity {
             SynchedEntityData.defineId(Dog.class, EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<Integer> DATA_MODE =
             SynchedEntityData.defineId(Dog.class, EntityDataSerializers.INT);
+    private static final EntityDataAccessor<Integer> DATA_LEVEL =
+            SynchedEntityData.defineId(Dog.class, EntityDataSerializers.INT);
+    private static final EntityDataAccessor<Integer> DATA_XP =
+            SynchedEntityData.defineId(Dog.class, EntityDataSerializers.INT);
+    /** Second shears click within this many ticks confirms releasing the dog. */
+    private static final int RELEASE_CONFIRM_TICKS = 60;
 
     /** Game animals HUNT mode goes after. Data-driven so packs can change it. */
     public static final TagKey<EntityType<?>> HUNTABLE = TagKey.create(Registries.ENTITY_TYPE, GoodBoys.id("huntable"));
@@ -123,6 +134,8 @@ public class Dog extends TamableAnimal implements GeoEntity {
     private boolean wet;
     @Nullable
     private BlockPos anchor;
+    private int companionTicks;
+    private long releaseArmedUntil;
     // client side
     private int airTicks;
 
@@ -133,9 +146,9 @@ public class Dog extends TamableAnimal implements GeoEntity {
 
     public static AttributeSupplier.Builder createAttributes() {
         return createMobAttributes()
-                .add(Attributes.MOVEMENT_SPEED, 0.3)
-                .add(Attributes.MAX_HEALTH, 8.0)
-                .add(Attributes.ATTACK_DAMAGE, 4.0);
+                .add(Attributes.MOVEMENT_SPEED, DogLevels.BASE_SPEED)
+                .add(Attributes.MAX_HEALTH, DogLevels.UNTAMED_HEALTH)
+                .add(Attributes.ATTACK_DAMAGE, DogLevels.BASE_ATTACK);
     }
 
     @Override
@@ -213,6 +226,144 @@ public class Dog extends TamableAnimal implements GeoEntity {
         builder.define(DATA_INTERESTED, false);
         builder.define(DATA_EXCITED, false);
         builder.define(DATA_MODE, DogMode.FOLLOW.ordinal());
+        builder.define(DATA_LEVEL, 1);
+        builder.define(DATA_XP, 0);
+    }
+
+    // ------------------------------------------------------------------ levels
+
+    public int getDogLevel() {
+        return entityData.get(DATA_LEVEL);
+    }
+
+    /** Experience collected towards the next level. */
+    public int getXp() {
+        return entityData.get(DATA_XP);
+    }
+
+    public void addExperience(int amount) {
+        if (amount <= 0 || level().isClientSide || getDogLevel() >= DogLevels.MAX_LEVEL) {
+            return;
+        }
+        int level = getDogLevel();
+        int xp = getXp() + amount;
+        int before = level;
+        while (level < DogLevels.MAX_LEVEL && xp >= DogLevels.xpToNext(level)) {
+            xp -= DogLevels.xpToNext(level);
+            level++;
+        }
+        entityData.set(DATA_LEVEL, level);
+        entityData.set(DATA_XP, level >= DogLevels.MAX_LEVEL ? 0 : xp);
+        if (level > before) {
+            onLevelUp(level);
+        }
+    }
+
+    private void onLevelUp(int level) {
+        applyLevelStats();
+        setHealth(getMaxHealth());
+        playSound(SoundEvents.PLAYER_LEVELUP, 0.6F, 1.6F);
+        if (level() instanceof ServerLevel serverLevel) {
+            serverLevel.sendParticles(ParticleTypes.HAPPY_VILLAGER, getX(), getY() + getBbHeight() * 0.7, getZ(), 14, 0.4, 0.35, 0.4, 0.0);
+        }
+        if (getOwner() instanceof Player owner) {
+            String key = level >= DogLevels.MAX_LEVEL ? "message.goodboys.max_level" : "message.goodboys.level_up";
+            owner.sendSystemMessage(Component.translatable(key, getDisplayName(), level));
+        }
+    }
+
+    /** Health, damage and speed for the current level (and tamed state). */
+    public void applyLevelStats() {
+        int level = getDogLevel();
+        getAttribute(Attributes.MAX_HEALTH).setBaseValue(DogLevels.maxHealth(level, isTame()));
+        getAttribute(Attributes.ATTACK_DAMAGE).setBaseValue(DogLevels.attack(level));
+        getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(DogLevels.speed(level));
+        if (getHealth() > getMaxHealth()) {
+            setHealth(getMaxHealth());
+        }
+    }
+
+    @Override
+    protected void applyTamingSideEffects() {
+        applyLevelStats();
+        if (isTame()) {
+            setHealth(getMaxHealth());
+        }
+    }
+
+    @Override
+    public boolean killedEntity(ServerLevel level, LivingEntity killed) {
+        boolean result = super.killedEntity(level, killed);
+        if (isTame()) {
+            addExperience(DogLevels.killReward(killed));
+        }
+        return result;
+    }
+
+    // ------------------------------------------------------------------ pack
+
+    /** Tames the dog for {@code player} unless their pack is already full. */
+    public boolean tameIfPackHasRoom(Player player) {
+        if (!level().isClientSide && !PackData.get(level().getServer()).canJoin(player.getUUID(), getUUID())) {
+            return false;
+        }
+        tame(player);
+        return true;
+    }
+
+    @Override
+    public void tame(Player player) {
+        super.tame(player);
+        if (!level().isClientSide) {
+            PackData.get(level().getServer()).add(player.getUUID(), getUUID());
+        }
+    }
+
+    /** Lets the dog go: it turns wild again (keeping its level) and frees a pack slot. */
+    public void release() {
+        UUID owner = getOwnerUUID();
+        if (owner != null && !level().isClientSide) {
+            PackData.get(level().getServer()).remove(owner, getUUID());
+        }
+        setOrderedToSit(false);
+        setInSittingPose(false);
+        setNapping(false);
+        setTarget(null);
+        stopRiding();
+        setMode(DogMode.FOLLOW);
+        anchor = null;
+        setOwnerUUID(null);
+        setTame(false, true);
+        level().broadcastEntityEvent(this, (byte) 6); // smoke puff
+    }
+
+    @Override
+    public void remove(RemovalReason reason) {
+        if (!level().isClientSide && reason.shouldDestroy() && getOwnerUUID() != null && level().getServer() != null) {
+            PackData.get(level().getServer()).remove(getOwnerUUID(), getUUID());
+        }
+        super.remove(reason);
+    }
+
+    private void showStatus(Player player) {
+        int level = getDogLevel();
+        Component xp = level >= DogLevels.MAX_LEVEL
+                ? Component.translatable("message.goodboys.status.max")
+                : Component.translatable("message.goodboys.status.xp", getXp(), DogLevels.xpToNext(level));
+        player.displayClientMessage(Component.translatable("message.goodboys.status", getDisplayName(), level, xp,
+                Mth.ceil(getHealth()), Mth.ceil(getMaxHealth())), true);
+    }
+
+    private void handleRelease(Player player) {
+        long now = level().getGameTime();
+        if (now <= releaseArmedUntil) {
+            Component name = getDisplayName();
+            release();
+            player.displayClientMessage(Component.translatable("message.goodboys.released", name), true);
+        } else {
+            releaseArmedUntil = now + RELEASE_CONFIRM_TICKS;
+            player.displayClientMessage(Component.translatable("message.goodboys.release_confirm", getDisplayName()), true);
+        }
     }
 
     // ------------------------------------------------------------------ commands
@@ -429,6 +580,13 @@ public class Dog extends TamableAnimal implements GeoEntity {
         tickShake();
         tickBoat();
 
+        LivingEntity owner = getOwner();
+        if (isTame() && !isNapping() && owner != null && distanceToSqr(owner) < 16 * 16
+                && ++companionTicks >= DogLevels.COMPANION_INTERVAL) {
+            companionTicks = 0;
+            addExperience(DogLevels.COMPANION_XP);
+        }
+
         // a guard gives up the chase once the intruder is well away from its area
         LivingEntity target = getTarget();
         if (target != null && getMode() == DogMode.GUARD && anchor != null
@@ -515,11 +673,26 @@ public class Dog extends TamableAnimal implements GeoEntity {
 
         if (!isTame()) {
             if (stack.is(Items.BONE)) {
+                if (!PackData.get(level().getServer()).canJoin(player.getUUID(), getUUID())) {
+                    player.displayClientMessage(Component.translatable("message.goodboys.pack_full", PackData.MAX_PACK_SIZE), true);
+                    return InteractionResult.CONSUME;
+                }
                 stack.consume(1, player);
                 tryToTame(player);
                 return InteractionResult.SUCCESS;
             }
             return super.mobInteract(player, hand);
+        }
+
+        if (isOwnedBy(player) && player.isSecondaryUseActive()) {
+            if (stack.is(Items.SHEARS)) {
+                handleRelease(player);
+                return InteractionResult.SUCCESS;
+            }
+            if (stack.isEmpty()) {
+                showStatus(player);
+                return InteractionResult.SUCCESS;
+            }
         }
 
         if (isFood(stack) && getHealth() < getMaxHealth()) {
@@ -545,8 +718,7 @@ public class Dog extends TamableAnimal implements GeoEntity {
     }
 
     private void tryToTame(Player player) {
-        if (random.nextInt(3) == 0 && !EventHooks.onAnimalTame(this, player)) {
-            tame(player);
+        if (random.nextInt(3) == 0 && !EventHooks.onAnimalTame(this, player) && tameIfPackHasRoom(player)) {
             navigation.stop();
             setTarget(null);
             setOrderedToSit(true);
@@ -648,6 +820,9 @@ public class Dog extends TamableAnimal implements GeoEntity {
         tag.putInt("NapStyle", getNapStyle());
         tag.putInt("SitTicks", sitTicks);
         tag.putString("Mode", getMode().name());
+        tag.putInt("Level", getDogLevel());
+        tag.putInt("Xp", getXp());
+        tag.putInt("CompanionTicks", companionTicks);
         if (anchor != null) {
             tag.putLong("Anchor", anchor.asLong());
         }
@@ -661,6 +836,10 @@ public class Dog extends TamableAnimal implements GeoEntity {
         sitTicks = tag.getInt("SitTicks");
         setMode(DogMode.byName(tag.getString("Mode")));
         anchor = tag.contains("Anchor") ? BlockPos.of(tag.getLong("Anchor")) : null;
+        entityData.set(DATA_LEVEL, Mth.clamp(tag.contains("Level") ? tag.getInt("Level") : 1, 1, DogLevels.MAX_LEVEL));
+        entityData.set(DATA_XP, Math.max(0, tag.getInt("Xp")));
+        companionTicks = tag.getInt("CompanionTicks");
+        applyLevelStats();
     }
 
     // ------------------------------------------------------------------ animation

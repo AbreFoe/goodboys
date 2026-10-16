@@ -4,6 +4,7 @@ import javax.annotation.Nullable;
 
 import com.goodboys.entity.Dog;
 import com.goodboys.entity.DogCommand;
+import com.goodboys.entity.DogLevels;
 import com.goodboys.entity.DogMode;
 import com.goodboys.network.DogCommandPayload;
 
@@ -99,10 +100,26 @@ public class DogCommandScreen extends Screen {
         }
 
         graphics.drawCenteredString(font, header, cx, cy - 10, 0xFFFFD27F);
+        if (dog != null) {
+            drawLevel(graphics, cx, cy - 34);
+        }
         if (hovered != null) {
             graphics.drawCenteredString(font, Component.translatable(hovered.translationKey()), cx, cy + 2,
                     hovered.available() ? 0xFFFFFFFF : COLOR_DISABLED_TEXT);
         }
+    }
+
+    /** "Level 7" with an experience bar under it, above the dog's name. */
+    private void drawLevel(GuiGraphics graphics, int cx, int y) {
+        int level = dog.getDogLevel();
+        boolean max = level >= DogLevels.MAX_LEVEL;
+        graphics.drawCenteredString(font, Component.translatable(max ? "gui.goodboys.level_max" : "gui.goodboys.level", level), cx, y, 0xFFFFFFFF);
+        int w = 60;
+        int x0 = cx - w / 2;
+        int barY = y + 11;
+        float progress = max ? 1.0F : dog.getXp() / (float) Math.max(1, DogLevels.xpToNext(level));
+        graphics.fill(x0 - 1, barY - 1, x0 + w + 1, barY + 3, 0xFF000000);
+        graphics.fill(x0, barY, x0 + Math.round(w * Mth.clamp(progress, 0.0F, 1.0F)), barY + 2, 0xFF7FDF3F);
     }
 
     private static boolean isCurrent(DogCommand command, DogMode mode) {
