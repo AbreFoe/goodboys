@@ -7,16 +7,20 @@ import com.goodboys.entity.DogLevels;
 import com.goodboys.entity.DogMode;
 import com.goodboys.pack.PackData;
 import com.goodboys.registry.ModEntities;
+import com.goodboys.registry.ModGameRules;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.damagesource.DamageSources;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.animal.Pig;
 import net.minecraft.world.entity.animal.Wolf;
 import net.minecraft.world.entity.monster.Husk;
+import net.minecraft.world.entity.monster.Zombie;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
@@ -163,6 +167,72 @@ public class DogGameTests {
             helper.assertTrue(PackData.get(helper.getLevel().getServer()).size(owner.getUUID()) == PackData.MAX_PACK_SIZE, "pack size is off");
             helper.succeed();
         });
+    }
+
+    // ---------------------------------------------------------------- survival modes
+    // Default batch runs with goodboysPermadeath off (Happy Doggo); the permadeath test has its own batch.
+
+    @GameTest(template = "arena")
+    public static void happyDoggoKnocksOutAndRevives(GameTestHelper helper) {
+        Dog dog = tamedDog(helper, 4, 2, 4);
+        DamageSources damage = helper.getLevel().damageSources();
+        dog.hurt(damage.generic(), 1000.0F);
+        helper.assertTrue(dog.isAlive() && dog.isDowned(), "dog did not get knocked out");
+        helper.assertTrue(dog.getHealth() == 1.0F, "knocked-out dog should be at 1 health");
+
+        Zombie zombie = helper.spawn(EntityType.ZOMBIE, 2, 2, 2);
+        helper.assertFalse(dog.hurt(damage.mobAttack(zombie), 5.0F), "monsters can still hurt a knocked-out dog");
+        helper.assertFalse(dog.canBeSeenAsEnemy(), "monsters still go after a knocked-out dog");
+
+        // a finishing blow swallowed by invulnerability frames must not leave the dog marked for real death
+        dog.hurt(damage.fellOutOfWorld(), 1000.0F);
+        dog.revive();
+        helper.assertFalse(dog.isDowned(), "dog did not get back up");
+        helper.assertTrue(dog.getHealth() >= 4.0F, "revived dog has too little health");
+        helper.runAfterDelay(20, () -> {
+            dog.hurt(damage.generic(), 1000.0F);
+            helper.assertTrue(dog.isAlive() && dog.isDowned(), "second knockout killed the dog instead");
+            helper.succeed();
+        });
+    }
+
+    @GameTest(template = "arena")
+    public static void happyDoggoIgnoresFallsAndItsOwner(GameTestHelper helper) {
+        ServerPlayer owner = helper.makeMockServerPlayerInLevel();
+        Dog dog = helper.spawn(ModEntities.DOG.get(), 4, 2, 4);
+        dog.tame(owner);
+        DamageSources damage = helper.getLevel().damageSources();
+        float health = dog.getHealth();
+        dog.hurt(damage.fall(), 10.0F);
+        dog.hurt(damage.playerAttack(owner), 10.0F);
+        helper.assertTrue(dog.getHealth() == health, "dog took fall or owner damage");
+        helper.succeed();
+    }
+
+    @GameTest(template = "arena", timeoutTicks = 40)
+    public static void knockedOutDogStillDiesInTheVoid(GameTestHelper helper) {
+        Dog dog = tamedDog(helper, 4, 2, 4);
+        dog.hurt(helper.getLevel().damageSources().generic(), 1000.0F);
+        helper.assertTrue(dog.isDowned(), "dog did not get knocked out");
+        helper.runAfterDelay(20, () -> { // past the invulnerability frames of the first hit
+            dog.hurt(helper.getLevel().damageSources().fellOutOfWorld(), 1000.0F);
+            helper.assertTrue(dog.isDeadOrDying(), "the void did not kill a knocked-out dog");
+            helper.succeed();
+        });
+    }
+
+    @GameTest(template = "arena", batch = "goodboys_permadeath")
+    public static void permadeathDogsDieForGood(GameTestHelper helper) {
+        GameRules.BooleanValue rule = helper.getLevel().getGameRules().getRule(ModGameRules.PERMADEATH);
+        rule.set(true, helper.getLevel().getServer());
+        try {
+            Dog dog = tamedDog(helper, 4, 2, 4);
+            dog.hurt(helper.getLevel().damageSources().generic(), 1000.0F);
+            helper.assertTrue(dog.isDeadOrDying() && !dog.isDowned(), "dog survived a lethal hit with permadeath on");
+        } finally {
+            rule.set(false, helper.getLevel().getServer());
+        }
+        helper.succeed();
     }
 
     @GameTest(template = "arena", timeoutTicks = Dog.NAP_DELAY_TICKS + 100)

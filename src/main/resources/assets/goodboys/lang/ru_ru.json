@@ -27,5 +27,16 @@
   "message.goodboys.status.max": "макс. уровень",
   "message.goodboys.pack_full": "Стая полна (%s собак). Сначала отпусти одну: Shift + ножницы, два раза",
   "message.goodboys.release_confirm": "Повтори в течение 3 секунд, чтобы отпустить: %s",
-  "message.goodboys.released": "%s теперь на свободе"
+  "message.goodboys.released": "%s теперь на свободе",
+  "gamerule.goodboysPermadeath": "Good Boys: собаки умирают насовсем (All The Dogs Go To Heaven)",
+  "gamerule.goodboysPermadeath.description": "Выключено (Happy Doggo): вместо смерти собака теряет сознание и ждёт хозяина, не получает урона от падения и от хозяина.",
+  "gui.goodboys.dog_mode": "Собаки",
+  "gui.goodboys.dog_mode.happy": "Happy Doggo",
+  "gui.goodboys.dog_mode.heaven": "All The Dogs Go To Heaven",
+  "gui.goodboys.dog_mode.happy.info": "Вместо смерти собака теряет сознание и ждёт, пока ты её покормишь. Нет урона от падения и от хозяина. Огонь, лава, утопление и пустота всё равно убивают, как и 5 минут без помощи.",
+  "gui.goodboys.dog_mode.heaven.info": "Собаки могут умереть насовсем, как ванильные волки.",
+  "message.goodboys.knocked_out": "%s без сознания на %s, %s, %s! Покорми мясом, чтобы поднять.",
+  "message.goodboys.bleeding_out": "%s не продержится без тебя и минуты!",
+  "message.goodboys.revived": "%s снова на лапах",
+  "message.goodboys.needs_food": "Чтобы поднять собаку (%s), нужно мясо"
 }

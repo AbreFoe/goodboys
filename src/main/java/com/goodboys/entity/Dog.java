@@ -9,6 +9,7 @@ import com.goodboys.entity.ai.DogAreaGoal;
 import com.goodboys.entity.ai.DogBegGoal;
 import com.goodboys.entity.ai.DogPlayGoal;
 import com.goodboys.pack.PackData;
+import com.goodboys.registry.ModGameRules;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
@@ -21,12 +22,14 @@ import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
+import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.damagesource.DamageTypes;
 import net.minecraft.world.entity.AgeableMob;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
@@ -99,6 +102,11 @@ public class Dog extends TamableAnimal implements GeoEntity {
             SynchedEntityData.defineId(Dog.class, EntityDataSerializers.INT);
     private static final EntityDataAccessor<Integer> DATA_XP =
             SynchedEntityData.defineId(Dog.class, EntityDataSerializers.INT);
+    private static final EntityDataAccessor<Boolean> DATA_DOWNED =
+            SynchedEntityData.defineId(Dog.class, EntityDataSerializers.BOOLEAN);
+    /** Happy Doggo: a knocked-out dog nobody helps dies after this long (counted while the owner is online). */
+    public static final int BLEED_OUT_TICKS = 20 * 60 * 5;
+    private static final int BLEED_OUT_WARNING_TICKS = BLEED_OUT_TICKS - 20 * 60;
     /** Second shears click within this many ticks confirms releasing the dog. */
     private static final int RELEASE_CONFIRM_TICKS = 60;
 
@@ -123,6 +131,7 @@ public class Dog extends TamableAnimal implements GeoEntity {
     private static final RawAnimation FALL = RawAnimation.begin().thenLoop("animation.dog.fall");
     private static final RawAnimation TAIL_WAG = RawAnimation.begin().thenLoop("animation.dog.tail_wag");
     private static final RawAnimation HEAD_TILT = RawAnimation.begin().thenLoop("animation.dog.head_tilt");
+    private static final RawAnimation KNOCKED_OUT = RawAnimation.begin().thenLoop("animation.dog.knocked_out");
 
     private final AnimatableInstanceCache geoCache = GeckoLibUtil.createInstanceCache(this);
     private int sitTicks;
@@ -136,6 +145,9 @@ public class Dog extends TamableAnimal implements GeoEntity {
     private BlockPos anchor;
     private int companionTicks;
     private long releaseArmedUntil;
+    private int downedTicks;
+    /** Set while a hit is allowed to really kill the dog, so die() doesn't turn it into a knockout. */
+    private boolean finishing;
     // client side
     private int airTicks;
 
@@ -228,6 +240,91 @@ public class Dog extends TamableAnimal implements GeoEntity {
         builder.define(DATA_MODE, DogMode.FOLLOW.ordinal());
         builder.define(DATA_LEVEL, 1);
         builder.define(DATA_XP, 0);
+        builder.define(DATA_DOWNED, false);
+    }
+
+    // ------------------------------------------------------------------ survival (Happy Doggo knockouts)
+
+    /** Knocked out: lying there until the owner helps. Only happens with {@code goodboysPermadeath} off. */
+    public boolean isDowned() {
+        return entityData.get(DATA_DOWNED);
+    }
+
+    private boolean happyDoggo() {
+        return isTame() && !ModGameRules.permadeath(level());
+    }
+
+    /** What still hurts a knocked-out dog: fire and lava, drowning, suffocation, the void and /kill. */
+    private static boolean finishesDownedDog(DamageSource source) {
+        return source.is(DamageTypeTags.BYPASSES_INVULNERABILITY) || source.is(DamageTypeTags.IS_FIRE)
+                || source.is(DamageTypeTags.IS_DROWNING) || source.is(DamageTypes.IN_WALL);
+    }
+
+    private void knockOut() {
+        entityData.set(DATA_DOWNED, true);
+        downedTicks = 0;
+        setNapping(false);
+        setOrderedToSit(false);
+        setInSittingPose(false);
+        setExcited(false);
+        setInterested(false);
+        setTarget(null);
+        navigation.stop();
+        stopRiding();
+        if (actionTicks > 0) {
+            stopTriggeredAnim("actions", null);
+            actionTicks = 0;
+        }
+        playSound(SoundEvents.WOLF_WHINE, 1.0F, 0.8F);
+        if (getOwner() instanceof Player owner) {
+            BlockPos pos = blockPosition();
+            owner.sendSystemMessage(Component.translatable("message.goodboys.knocked_out", getDisplayName(), pos.getX(), pos.getY(), pos.getZ()));
+        }
+    }
+
+    /** Back on its paws with a bit of health. */
+    public void revive() {
+        entityData.set(DATA_DOWNED, false);
+        downedTicks = 0;
+        setHealth((float) Math.max(4.0, getMaxHealth() * 0.3));
+        level().broadcastEntityEvent(this, (byte) 7); // hearts
+        playSound(SoundEvents.WOLF_AMBIENT, 1.0F, 1.2F);
+    }
+
+    private void tickDowned() {
+        UUID ownerId = getOwnerUUID();
+        boolean ownerOnline = ownerId != null && level().getServer() != null && level().getServer().getPlayerList().getPlayer(ownerId) != null;
+        if (ownerOnline) {
+            downedTicks++;
+        }
+        if (downedTicks == BLEED_OUT_WARNING_TICKS && getOwner() instanceof Player owner) {
+            owner.sendSystemMessage(Component.translatable("message.goodboys.bleeding_out", getDisplayName()));
+        }
+        if (downedTicks >= BLEED_OUT_TICKS) {
+            kill();
+            return;
+        }
+        if (tickCount % 40 == 0 && level() instanceof ServerLevel serverLevel) {
+            serverLevel.sendParticles(ParticleTypes.DAMAGE_INDICATOR, getX(), getY() + 0.5, getZ(), 1, 0.2, 0.1, 0.2, 0.0);
+        }
+    }
+
+    @Override
+    public void die(DamageSource source) {
+        if (!level().isClientSide && !finishing && !isDowned() && happyDoggo() && !source.is(DamageTypeTags.BYPASSES_INVULNERABILITY)) {
+            setHealth(1.0F);
+            knockOut();
+            return;
+        }
+        finishing = false;
+        entityData.set(DATA_DOWNED, false);
+        super.die(source);
+    }
+
+    /** Mobs lose interest in a knocked-out dog. */
+    @Override
+    public boolean canBeSeenAsEnemy() {
+        return !isDowned() && super.canBeSeenAsEnemy();
     }
 
     // ------------------------------------------------------------------ levels
@@ -525,7 +622,7 @@ public class Dog extends TamableAnimal implements GeoEntity {
 
     /** In the middle of a short idle animation (sniff, stretch, shake...) that wandering would break. */
     public boolean isBusy() {
-        return actionTicks > 0 || isInterested();
+        return actionTicks > 0 || isInterested() || isDowned();
     }
 
     public boolean isShaking() {
@@ -564,6 +661,10 @@ public class Dog extends TamableAnimal implements GeoEntity {
     public void aiStep() {
         super.aiStep();
         if (level().isClientSide) {
+            return;
+        }
+        if (isDowned()) {
+            tickDowned();
             return;
         }
         if (isOrderedToSit()) {
@@ -629,7 +730,7 @@ public class Dog extends TamableAnimal implements GeoEntity {
     /** Stands still while shaking off water, even if the owner walks away. */
     @Override
     protected boolean isImmobile() {
-        return super.isImmobile() || shakeTicks > 0;
+        return super.isImmobile() || shakeTicks > 0 || isDowned();
     }
 
     @Override
@@ -653,6 +754,23 @@ public class Dog extends TamableAnimal implements GeoEntity {
         if (isInvulnerableTo(source)) {
             return false;
         }
+        if (!level().isClientSide && happyDoggo()) {
+            if (isDowned()) {
+                if (!finishesDownedDog(source)) {
+                    return false;
+                }
+                finishing = true; // this one is fatal for real (unless invulnerability frames swallow it)
+                boolean hurt = super.hurt(source, amount);
+                finishing = false;
+                return hurt;
+            }
+            if (source.is(DamageTypeTags.IS_FALL)) {
+                return false;
+            }
+            if (source.getEntity() != null && source.getEntity() == getOwner()) {
+                return false; // swords, arrows and potions from the owner don't hurt
+            }
+        }
         if (!level().isClientSide) {
             setNapping(false);
             setOrderedToSit(false);
@@ -669,6 +787,17 @@ public class Dog extends TamableAnimal implements GeoEntity {
         if (level().isClientSide) {
             boolean handled = isOwnedBy(player) || stack.is(Items.BONE) && !isTame();
             return handled ? InteractionResult.CONSUME : InteractionResult.PASS;
+        }
+
+        if (isDowned()) {
+            if (isOwnedBy(player) && isFood(stack)) {
+                stack.consume(1, player);
+                revive();
+                player.displayClientMessage(Component.translatable("message.goodboys.revived", getDisplayName()), true);
+                return InteractionResult.SUCCESS;
+            }
+            player.displayClientMessage(Component.translatable("message.goodboys.needs_food", getDisplayName()), true);
+            return InteractionResult.CONSUME;
         }
 
         if (!isTame()) {
@@ -823,6 +952,8 @@ public class Dog extends TamableAnimal implements GeoEntity {
         tag.putInt("Level", getDogLevel());
         tag.putInt("Xp", getXp());
         tag.putInt("CompanionTicks", companionTicks);
+        tag.putBoolean("Downed", isDowned());
+        tag.putInt("DownedTicks", downedTicks);
         if (anchor != null) {
             tag.putLong("Anchor", anchor.asLong());
         }
@@ -839,6 +970,8 @@ public class Dog extends TamableAnimal implements GeoEntity {
         entityData.set(DATA_LEVEL, Mth.clamp(tag.contains("Level") ? tag.getInt("Level") : 1, 1, DogLevels.MAX_LEVEL));
         entityData.set(DATA_XP, Math.max(0, tag.getInt("Xp")));
         companionTicks = tag.getInt("CompanionTicks");
+        entityData.set(DATA_DOWNED, tag.getBoolean("Downed"));
+        downedTicks = tag.getInt("DownedTicks");
         applyLevelStats();
     }
 
@@ -866,6 +999,9 @@ public class Dog extends TamableAnimal implements GeoEntity {
     }
 
     private PlayState bodyAnimation(AnimationState<Dog> state) {
+        if (isDowned()) {
+            return state.setAndContinue(KNOCKED_OUT);
+        }
         if (isInWater() || isInLava()) {
             return state.setAndContinue(SWIM);
         }
@@ -886,7 +1022,7 @@ public class Dog extends TamableAnimal implements GeoEntity {
     }
 
     private PlayState tailAnimation(AnimationState<Dog> state) {
-        if (isNapping() || isInWater()) {
+        if (isNapping() || isInWater() || isDowned()) {
             return PlayState.STOP;
         }
         LivingEntity owner = getOwner();
@@ -896,7 +1032,7 @@ public class Dog extends TamableAnimal implements GeoEntity {
     }
 
     private PlayState headAnimation(AnimationState<Dog> state) {
-        return isInterested() && !isNapping() ? state.setAndContinue(HEAD_TILT) : PlayState.STOP;
+        return isInterested() && !isNapping() && !isDowned() ? state.setAndContinue(HEAD_TILT) : PlayState.STOP;
     }
 
     @Override

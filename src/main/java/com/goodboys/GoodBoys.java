@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 
 import com.goodboys.network.ModNetwork;
 import com.goodboys.registry.ModEntities;
+import com.goodboys.registry.ModGameRules;
 import com.goodboys.registry.ModItems;
 import com.mojang.logging.LogUtils;
 
@@ -18,6 +19,7 @@ public class GoodBoys {
     public static final Logger LOGGER = LogUtils.getLogger();
 
     public GoodBoys(IEventBus modEventBus, ModContainer modContainer) {
+        ModGameRules.init();
         ModEntities.register(modEventBus);
         ModItems.register(modEventBus);
         ModNetwork.register(modEventBus);

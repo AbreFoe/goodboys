@@ -34,6 +34,8 @@ public final class ClientEvents {
     static void register(IEventBus modBus) {
         modBus.addListener(ClientEvents::registerKeys);
         NeoForge.EVENT_BUS.addListener(ClientEvents::onClientTick);
+        NeoForge.EVENT_BUS.addListener(CreateWorldOptions::onScreenInit);
+        NeoForge.EVENT_BUS.addListener(CreateWorldOptions::onScreenRender);
     }
 
     private static void registerKeys(RegisterKeyMappingsEvent event) {

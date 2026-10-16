@@ -27,5 +27,16 @@
   "message.goodboys.status.max": "max level",
   "message.goodboys.pack_full": "Your pack is full (%s dogs). Release one first: sneak + use shears on it twice",
   "message.goodboys.release_confirm": "Do it again within 3 seconds to release %s",
-  "message.goodboys.released": "%s is free now"
+  "message.goodboys.released": "%s is free now",
+  "gamerule.goodboysPermadeath": "Good Boys: dogs die for good (All The Dogs Go To Heaven)",
+  "gamerule.goodboysPermadeath.description": "Off (Happy Doggo): dogs get knocked out and wait for their owner instead of dying, and take no fall or owner damage.",
+  "gui.goodboys.dog_mode": "Dogs",
+  "gui.goodboys.dog_mode.happy": "Happy Doggo",
+  "gui.goodboys.dog_mode.heaven": "All The Dogs Go To Heaven",
+  "gui.goodboys.dog_mode.happy.info": "Dogs get knocked out instead of dying and wait for you to feed them back up. No fall damage, no damage from their owner. Fire, lava, drowning and the void still kill, and so do 5 minutes without help.",
+  "gui.goodboys.dog_mode.heaven.info": "Dogs can die for good, like vanilla wolves.",
+  "message.goodboys.knocked_out": "%s is knocked out at %s, %s, %s! Feed them meat to get them back up.",
+  "message.goodboys.bleeding_out": "%s won't last another minute without you!",
+  "message.goodboys.revived": "%s is back on their paws",
+  "message.goodboys.needs_food": "%s needs meat to get back up"
 }
