@@ -1,4 +1,21 @@
 {
   "entity.goodboys.dog": "Dog",
-  "item.goodboys.dog_spawn_egg": "Dog Spawn Egg"
+  "item.goodboys.dog_spawn_egg": "Dog Spawn Egg",
+  "key.categories.goodboys": "Good Boys",
+  "key.goodboys.command_menu": "Dog command menu",
+  "gui.goodboys.command_menu": "Dog commands",
+  "gui.goodboys.pack": "Pack (%s)",
+  "gui.goodboys.soon": "(soon)",
+  "gui.goodboys.command.follow": "Follow me",
+  "gui.goodboys.command.stay": "Stay",
+  "gui.goodboys.command.sit": "Sit",
+  "gui.goodboys.command.guard": "Guard",
+  "gui.goodboys.command.go_to": "Go there",
+  "gui.goodboys.command.attack": "Get 'em!",
+  "gui.goodboys.command.hunt": "Hunt",
+  "gui.goodboys.command.find": "Find",
+  "message.goodboys.no_dogs": "None of your dogs are close enough to hear you",
+  "message.goodboys.no_spot": "Look at the spot you want them to go to",
+  "message.goodboys.no_target": "Look at what you want them to attack",
+  "message.goodboys.commanded": "%s: %s"
 }

@@ -14,6 +14,7 @@ import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 public class GoodBoysClient {
     public GoodBoysClient(IEventBus modBus, ModContainer container) {
         modBus.addListener(GoodBoysClient::registerRenderers);
+        ClientEvents.register(modBus);
     }
 
     private static void registerRenderers(EntityRenderersEvent.RegisterRenderers event) {

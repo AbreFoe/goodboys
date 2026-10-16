@@ -5,6 +5,7 @@ import java.util.EnumSet;
 import javax.annotation.Nullable;
 
 import com.goodboys.entity.Dog;
+import com.goodboys.entity.DogMode;
 
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
@@ -32,7 +33,7 @@ public class DogPlayGoal extends Goal {
 
     @Override
     public boolean canUse() {
-        if (!dog.isTame() || dog.isOrderedToSit() || dog.isNapping() || dog.isBusy() || !dog.canPlay()
+        if (!dog.isTame() || dog.getMode() != DogMode.FOLLOW || dog.isOrderedToSit() || dog.isNapping() || dog.isBusy() || !dog.canPlay()
                 || dog.getTarget() != null || !dog.onGround() || dog.isInWater()) {
             return false;
         }

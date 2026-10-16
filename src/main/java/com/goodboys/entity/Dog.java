@@ -2,11 +2,14 @@ package com.goodboys.entity;
 
 import javax.annotation.Nullable;
 
+import com.goodboys.GoodBoys;
+import com.goodboys.entity.ai.DogAreaGoal;
 import com.goodboys.entity.ai.DogBegGoal;
 import com.goodboys.entity.ai.DogPlayGoal;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
@@ -15,6 +18,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.tags.ItemTags;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.damagesource.DamageSource;
@@ -22,6 +26,7 @@ import net.minecraft.world.entity.AgeableMob;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.TamableAnimal;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -35,13 +40,16 @@ import net.minecraft.world.entity.ai.goal.SitWhenOrderedToGoal;
 import net.minecraft.world.entity.ai.goal.TemptGoal;
 import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal;
 import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
+import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.ai.goal.target.OwnerHurtByTargetGoal;
 import net.minecraft.world.entity.ai.goal.target.OwnerHurtTargetGoal;
 import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.animal.horse.AbstractHorse;
 import net.minecraft.world.entity.monster.Creeper;
+import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.monster.Ghast;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.vehicle.Boat;
 import net.minecraft.world.food.FoodProperties;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -80,6 +88,15 @@ public class Dog extends TamableAnimal implements GeoEntity {
             SynchedEntityData.defineId(Dog.class, EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<Boolean> DATA_EXCITED =
             SynchedEntityData.defineId(Dog.class, EntityDataSerializers.BOOLEAN);
+    private static final EntityDataAccessor<Integer> DATA_MODE =
+            SynchedEntityData.defineId(Dog.class, EntityDataSerializers.INT);
+
+    /** Game animals HUNT mode goes after. Data-driven so packs can change it. */
+    public static final TagKey<EntityType<?>> HUNTABLE = TagKey.create(Registries.ENTITY_TYPE, GoodBoys.id("huntable"));
+    /** A guard chases intruders this far past the edge of its area before giving up. */
+    private static final double GUARD_CHASE_MARGIN = 6.0;
+    /** HUNT only looks for game this close to the owner. */
+    private static final double HUNT_RANGE = 16.0;
 
     private static final RawAnimation IDLE = RawAnimation.begin().thenLoop("animation.dog.idle");
     private static final RawAnimation WALK = RawAnimation.begin().thenLoop("animation.dog.walk");
@@ -104,6 +121,8 @@ public class Dog extends TamableAnimal implements GeoEntity {
     private int playCooldown = PLAY_COOLDOWN_TICKS / 2;
     private int shakeTicks;
     private boolean wet;
+    @Nullable
+    private BlockPos anchor;
     // client side
     private int airTicks;
 
@@ -122,25 +141,68 @@ public class Dog extends TamableAnimal implements GeoEntity {
     @Override
     protected void registerGoals() {
         goalSelector.addGoal(1, new FloatGoal(this));
-        goalSelector.addGoal(2, new SitWhenOrderedToGoal(this));
+        // Vanilla pets also sit down whenever the owner is offline. A dog on STAY or GUARD keeps working instead.
+        goalSelector.addGoal(2, new SitWhenOrderedToGoal(this) {
+            @Override
+            public boolean canUse() {
+                if (getMode().followsOwner()) {
+                    return super.canUse();
+                }
+                return isTame() && isOrderedToSit() && !isInWaterOrBubble() && onGround();
+            }
+
+            @Override
+            public boolean canContinueToUse() {
+                return getMode().followsOwner() ? super.canContinueToUse() : isOrderedToSit();
+            }
+        });
         goalSelector.addGoal(4, new LeapAtTargetGoal(this, 0.4F));
         goalSelector.addGoal(5, new MeleeAttackGoal(this, 1.0, true));
-        goalSelector.addGoal(6, new FollowOwnerGoal(this, 1.0, 10.0F, 2.0F));
-        goalSelector.addGoal(7, new TemptGoal(this, 1.0, stack -> stack.is(ItemTags.WOLF_FOOD), false));
+        goalSelector.addGoal(6, new FollowOwnerGoal(this, 1.0, 10.0F, 2.0F) {
+            @Override
+            public boolean canUse() {
+                return getMode().followsOwner() && super.canUse();
+            }
+
+            @Override
+            public boolean canContinueToUse() {
+                return getMode().followsOwner() && super.canContinueToUse();
+            }
+        });
+        goalSelector.addGoal(6, new DogAreaGoal(this));
+        goalSelector.addGoal(7, new TemptGoal(this, 1.0, stack -> stack.is(ItemTags.WOLF_FOOD), false) {
+            @Override
+            public boolean canUse() {
+                return (!isTame() || getMode() == DogMode.FOLLOW) && super.canUse();
+            }
+        });
         goalSelector.addGoal(7, new DogPlayGoal(this));
         goalSelector.addGoal(8, new WaterAvoidingRandomStrollGoal(this, 1.0) {
             @Override
             public boolean canUse() {
-                return !isBusy() && super.canUse();
+                return getMode().followsOwner() && !isBusy() && super.canUse();
             }
         });
         goalSelector.addGoal(9, new DogBegGoal(this, 8.0F));
         goalSelector.addGoal(10, new LookAtPlayerGoal(this, Player.class, 8.0F));
         goalSelector.addGoal(10, new RandomLookAroundGoal(this));
 
-        targetSelector.addGoal(1, new OwnerHurtByTargetGoal(this));
-        targetSelector.addGoal(2, new OwnerHurtTargetGoal(this));
+        // defending the owner only while with them; a guard or a waiting dog keeps its post
+        targetSelector.addGoal(1, new OwnerHurtByTargetGoal(this) {
+            @Override
+            public boolean canUse() {
+                return getMode().followsOwner() && super.canUse();
+            }
+        });
+        targetSelector.addGoal(2, new OwnerHurtTargetGoal(this) {
+            @Override
+            public boolean canUse() {
+                return getMode().followsOwner() && super.canUse();
+            }
+        });
         targetSelector.addGoal(3, new HurtByTargetGoal(this).setAlertOthers());
+        targetSelector.addGoal(4, new NearestAttackableTargetGoal<>(this, Mob.class, 5, true, false, this::isIntruder));
+        targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, Animal.class, 10, true, false, this::isGame));
     }
 
     @Override
@@ -150,6 +212,115 @@ public class Dog extends TamableAnimal implements GeoEntity {
         builder.define(DATA_NAP_STYLE, 0);
         builder.define(DATA_INTERESTED, false);
         builder.define(DATA_EXCITED, false);
+        builder.define(DATA_MODE, DogMode.FOLLOW.ordinal());
+    }
+
+    // ------------------------------------------------------------------ commands
+
+    public DogMode getMode() {
+        DogMode[] modes = DogMode.values();
+        return modes[Math.floorMod(entityData.get(DATA_MODE), modes.length)];
+    }
+
+    private void setMode(DogMode mode) {
+        entityData.set(DATA_MODE, mode.ordinal());
+    }
+
+    /** Centre of the STAY/GUARD area, server side only. */
+    @Nullable
+    public BlockPos getAnchor() {
+        return anchor;
+    }
+
+    /**
+     * Carries out an order from the owner's command menu.
+     *
+     * @param pos    where to go, for {@link DogCommand#GO_TO}
+     * @param target what to attack, for {@link DogCommand#ATTACK}
+     */
+    public void command(DogCommand command, @Nullable BlockPos pos, @Nullable LivingEntity target) {
+        setNapping(false);
+        if (command == DogCommand.SIT) {
+            setOrderedToSit(true);
+            setInSittingPose(true);
+            navigation.stop();
+            setTarget(null);
+            return;
+        }
+        if (command == DogCommand.FIND) {
+            return; // not implemented yet
+        }
+        setOrderedToSit(false);
+        setInSittingPose(false);
+        switch (command) {
+            case FOLLOW, HUNT -> {
+                setMode(command == DogCommand.HUNT ? DogMode.HUNT : DogMode.FOLLOW);
+                anchor = null;
+                setTarget(null);
+            }
+            case STAY -> {
+                setMode(DogMode.STAY);
+                anchor = blockPosition();
+                setTarget(null);
+                navigation.stop();
+            }
+            case GUARD -> {
+                // "go there" followed by "guard" guards that spot, not wherever the dog stands right now
+                anchor = getMode() == DogMode.STAY && anchor != null ? anchor : blockPosition();
+                setMode(DogMode.GUARD);
+                setTarget(null);
+            }
+            case GO_TO -> {
+                if (pos != null) {
+                    setMode(DogMode.STAY);
+                    anchor = pos.immutable();
+                    setTarget(null);
+                    navigation.moveTo(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, 1.2);
+                }
+            }
+            case ATTACK -> {
+                if (target != null && target != getOwner() && wantsToAttack(target, getOwner())) {
+                    setTarget(target);
+                }
+            }
+            default -> {
+            }
+        }
+    }
+
+    /** GUARD target filter: hostile mobs inside the guarded area. */
+    private boolean isIntruder(LivingEntity entity) {
+        return getMode() == DogMode.GUARD && anchor != null && entity instanceof Enemy && !(entity instanceof Creeper)
+                && entity.distanceToSqr(anchor.getX() + 0.5, anchor.getY(), anchor.getZ() + 0.5) <= sq(DogMode.GUARD.radius() + 2);
+    }
+
+    /** HUNT target filter: wild game near the owner (or near the dog if the owner is away). */
+    private boolean isGame(LivingEntity entity) {
+        if (getMode() != DogMode.HUNT || !entity.getType().is(HUNTABLE) || entity.isBaby()
+                || entity.hasCustomName() || entity instanceof Mob mob && mob.isLeashed()) {
+            return false;
+        }
+        LivingEntity owner = getOwner();
+        return entity.distanceToSqr(owner != null ? owner : this) <= sq(HUNT_RANGE);
+    }
+
+    private static double sq(double d) {
+        return d * d;
+    }
+
+    /** Owner in a boat with a free seat: hop in. Owner gets out: get out too. */
+    private void tickBoat() {
+        LivingEntity owner = getOwner();
+        if (isPassenger()) {
+            if (owner == null || owner.getVehicle() != getVehicle() || !getMode().followsOwner()) {
+                stopRiding();
+            }
+            return;
+        }
+        if (owner != null && getMode().followsOwner() && !isOrderedToSit() && getTarget() == null
+                && owner.getVehicle() instanceof Boat boat && distanceToSqr(boat) < 4 * 4) {
+            startRiding(boat);
+        }
     }
 
     // ------------------------------------------------------------------ napping
@@ -256,6 +427,14 @@ public class Dog extends TamableAnimal implements GeoEntity {
             playCooldown--;
         }
         tickShake();
+        tickBoat();
+
+        // a guard gives up the chase once the intruder is well away from its area
+        LivingEntity target = getTarget();
+        if (target != null && getMode() == DogMode.GUARD && anchor != null
+                && target.distanceToSqr(anchor.getX() + 0.5, anchor.getY(), anchor.getZ() + 0.5) > sq(DogMode.GUARD.radius() + GUARD_CHASE_MARGIN)) {
+            setTarget(null);
+        }
 
         if (actionTicks > 0) {
             actionTicks--;
@@ -468,6 +647,10 @@ public class Dog extends TamableAnimal implements GeoEntity {
         tag.putBoolean("Napping", isNapping());
         tag.putInt("NapStyle", getNapStyle());
         tag.putInt("SitTicks", sitTicks);
+        tag.putString("Mode", getMode().name());
+        if (anchor != null) {
+            tag.putLong("Anchor", anchor.asLong());
+        }
     }
 
     @Override
@@ -476,6 +659,8 @@ public class Dog extends TamableAnimal implements GeoEntity {
         entityData.set(DATA_NAP_STYLE, Math.floorMod(tag.getInt("NapStyle"), NAP_STYLES));
         entityData.set(DATA_NAPPING, tag.getBoolean("Napping"));
         sitTicks = tag.getInt("SitTicks");
+        setMode(DogMode.byName(tag.getString("Mode")));
+        anchor = tag.contains("Anchor") ? BlockPos.of(tag.getLong("Anchor")) : null;
     }
 
     // ------------------------------------------------------------------ animation
@@ -511,7 +696,7 @@ public class Dog extends TamableAnimal implements GeoEntity {
         if (isNapping()) {
             return state.setAndContinue(NAPS[Math.floorMod(getNapStyle(), NAP_STYLES)]);
         }
-        if (isInSittingPose()) {
+        if (isInSittingPose() || isPassenger()) {
             return state.setAndContinue(SIT);
         }
         if (state.isMoving()) {

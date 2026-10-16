@@ -1,4 +1,21 @@
 {
   "entity.goodboys.dog": "Собака",
-  "item.goodboys.dog_spawn_egg": "Яйцо призыва собаки"
+  "item.goodboys.dog_spawn_egg": "Яйцо призыва собаки",
+  "key.categories.goodboys": "Good Boys",
+  "key.goodboys.command_menu": "Меню команд собаке",
+  "gui.goodboys.command_menu": "Команды собаке",
+  "gui.goodboys.pack": "Стая (%s)",
+  "gui.goodboys.soon": "(скоро)",
+  "gui.goodboys.command.follow": "За мной",
+  "gui.goodboys.command.stay": "Жди",
+  "gui.goodboys.command.sit": "Сидеть",
+  "gui.goodboys.command.guard": "Охранять",
+  "gui.goodboys.command.go_to": "Иди туда",
+  "gui.goodboys.command.attack": "Взять!",
+  "gui.goodboys.command.hunt": "Охота",
+  "gui.goodboys.command.find": "Найди",
+  "message.goodboys.no_dogs": "Рядом нет твоих собак, они тебя не слышат",
+  "message.goodboys.no_spot": "Посмотри туда, куда им идти",
+  "message.goodboys.no_target": "Посмотри на того, кого взять",
+  "message.goodboys.commanded": "%s: %s"
 }

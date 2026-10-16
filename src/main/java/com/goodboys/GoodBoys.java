@@ -2,6 +2,7 @@ package com.goodboys;
 
 import org.slf4j.Logger;
 
+import com.goodboys.network.ModNetwork;
 import com.goodboys.registry.ModEntities;
 import com.goodboys.registry.ModItems;
 import com.mojang.logging.LogUtils;
@@ -19,6 +20,7 @@ public class GoodBoys {
     public GoodBoys(IEventBus modEventBus, ModContainer modContainer) {
         ModEntities.register(modEventBus);
         ModItems.register(modEventBus);
+        ModNetwork.register(modEventBus);
     }
 
     public static ResourceLocation id(String path) {
