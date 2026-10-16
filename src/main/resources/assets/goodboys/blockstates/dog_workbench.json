@@ -1,0 +1,19 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "goodboys:block/dog_workbench"
+    },
+    "facing=east": {
+      "model": "goodboys:block/dog_workbench",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "goodboys:block/dog_workbench",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "goodboys:block/dog_workbench",
+      "y": 270
+    }
+  }
+}

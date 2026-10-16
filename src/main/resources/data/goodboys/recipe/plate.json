@@ -1,0 +1,17 @@
+{
+  "type": "goodboys:dog_workbench",
+  "pattern": [
+    " I ",
+    "III",
+    " I "
+  ],
+  "key": {
+    "I": {
+      "item": "minecraft:iron_ingot"
+    }
+  },
+  "result": {
+    "id": "goodboys:plate",
+    "count": 1
+  }
+}

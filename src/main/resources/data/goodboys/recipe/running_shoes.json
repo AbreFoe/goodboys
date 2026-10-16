@@ -1,0 +1,22 @@
+{
+  "type": "goodboys:dog_workbench",
+  "pattern": [
+    "F F",
+    "RLR"
+  ],
+  "key": {
+    "F": {
+      "item": "minecraft:feather"
+    },
+    "R": {
+      "item": "minecraft:rabbit_hide"
+    },
+    "L": {
+      "item": "minecraft:leather"
+    }
+  },
+  "result": {
+    "id": "goodboys:running_shoes",
+    "count": 1
+  }
+}

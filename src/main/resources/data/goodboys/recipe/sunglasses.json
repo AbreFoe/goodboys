@@ -1,0 +1,19 @@
+{
+  "type": "goodboys:dog_workbench",
+  "pattern": [
+    "N N",
+    "GNG"
+  ],
+  "key": {
+    "N": {
+      "item": "minecraft:iron_nugget"
+    },
+    "G": {
+      "item": "minecraft:black_stained_glass_pane"
+    }
+  },
+  "result": {
+    "id": "goodboys:sunglasses",
+    "count": 1
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "type": "goodboys:dog_workbench",
+  "pattern": [
+    "III",
+    "B B"
+  ],
+  "key": {
+    "I": {
+      "item": "minecraft:iron_ingot"
+    },
+    "B": {
+      "item": "minecraft:bone"
+    }
+  },
+  "result": {
+    "id": "goodboys:jaw",
+    "count": 1
+  }
+}

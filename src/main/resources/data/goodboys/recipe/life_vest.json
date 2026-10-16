@@ -1,0 +1,20 @@
+{
+  "type": "goodboys:dog_workbench",
+  "pattern": [
+    "W W",
+    "WKW",
+    "WWW"
+  ],
+  "key": {
+    "W": {
+      "item": "minecraft:orange_wool"
+    },
+    "K": {
+      "item": "minecraft:dried_kelp"
+    }
+  },
+  "result": {
+    "id": "goodboys:life_vest",
+    "count": 1
+  }
+}

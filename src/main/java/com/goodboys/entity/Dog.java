@@ -1,5 +1,7 @@
 package com.goodboys.entity;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 import javax.annotation.Nullable;
@@ -8,10 +10,14 @@ import com.goodboys.GoodBoys;
 import com.goodboys.entity.ai.DogAreaGoal;
 import com.goodboys.entity.ai.DogBegGoal;
 import com.goodboys.entity.ai.DogPlayGoal;
+import com.goodboys.item.DogAccessoryItem;
+import com.goodboys.item.DogArmorItem;
+import com.goodboys.item.DogUpgrade;
 import com.goodboys.pack.PackData;
 import com.goodboys.registry.ModGameRules;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
@@ -19,7 +25,9 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.tags.DamageTypeTags;
@@ -27,7 +35,11 @@ import net.minecraft.tags.ItemTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.Container;
+import net.minecraft.world.ContainerHelper;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.SimpleContainer;
+import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.damagesource.DamageTypes;
 import net.minecraft.world.entity.AgeableMob;
@@ -36,6 +48,9 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.TamableAnimal;
+import net.minecraft.world.entity.ai.attributes.Attribute;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
@@ -104,6 +119,24 @@ public class Dog extends TamableAnimal implements GeoEntity {
             SynchedEntityData.defineId(Dog.class, EntityDataSerializers.INT);
     private static final EntityDataAccessor<Boolean> DATA_DOWNED =
             SynchedEntityData.defineId(Dog.class, EntityDataSerializers.BOOLEAN);
+    /** Copies of the equipped armour (with its upgrades) and head accessory, for the renderer. */
+    private static final EntityDataAccessor<ItemStack> DATA_ARMOR =
+            SynchedEntityData.defineId(Dog.class, EntityDataSerializers.ITEM_STACK);
+    private static final EntityDataAccessor<ItemStack> DATA_HEAD =
+            SynchedEntityData.defineId(Dog.class, EntityDataSerializers.ITEM_STACK);
+
+    public static final int GEAR_HEAD = 0;
+    public static final int GEAR_ARMOR = 1;
+    /** A knocked-out dog with a field kit and the Dog's Heart perk gets up by itself after this long. */
+    private static final int FIELD_KIT_TICKS = 20 * 20;
+
+    private static final ResourceLocation MOD_ARMOR = GoodBoys.id("dog_armor");
+    private static final ResourceLocation MOD_TOUGHNESS = GoodBoys.id("dog_armor_toughness");
+    private static final ResourceLocation MOD_PLATE = GoodBoys.id("upgrade_plate");
+    private static final ResourceLocation MOD_CLAWS = GoodBoys.id("upgrade_claws");
+    private static final ResourceLocation MOD_JAW = GoodBoys.id("upgrade_jaw");
+    private static final ResourceLocation MOD_JAW_KNOCKBACK = GoodBoys.id("upgrade_jaw_knockback");
+    private static final ResourceLocation MOD_SHOES = GoodBoys.id("upgrade_running_shoes");
     /** Happy Doggo: a knocked-out dog nobody helps dies after this long (counted while the owner is online). */
     public static final int BLEED_OUT_TICKS = 20 * 60 * 5;
     private static final int BLEED_OUT_WARNING_TICKS = BLEED_OUT_TICKS - 20 * 60;
@@ -146,6 +179,9 @@ public class Dog extends TamableAnimal implements GeoEntity {
     private int companionTicks;
     private long releaseArmedUntil;
     private int downedTicks;
+    private int downedAge;
+    private final SimpleContainer gear = new SimpleContainer(2);
+    private final SimpleContainer bag = new SimpleContainer(DogMenu.BAG_SIZE);
     /** Set while a hit is allowed to really kill the dog, so die() doesn't turn it into a knockout. */
     private boolean finishing;
     // client side
@@ -154,13 +190,15 @@ public class Dog extends TamableAnimal implements GeoEntity {
     public Dog(EntityType<? extends Dog> type, Level level) {
         super(type, level);
         setTame(false, false);
+        gear.addListener(container -> onGearChanged());
     }
 
     public static AttributeSupplier.Builder createAttributes() {
         return createMobAttributes()
                 .add(Attributes.MOVEMENT_SPEED, DogLevels.BASE_SPEED)
                 .add(Attributes.MAX_HEALTH, DogLevels.UNTAMED_HEALTH)
-                .add(Attributes.ATTACK_DAMAGE, DogLevels.BASE_ATTACK);
+                .add(Attributes.ATTACK_DAMAGE, DogLevels.BASE_ATTACK)
+                .add(Attributes.ATTACK_KNOCKBACK, 0.0);
     }
 
     @Override
@@ -241,6 +279,183 @@ public class Dog extends TamableAnimal implements GeoEntity {
         builder.define(DATA_LEVEL, 1);
         builder.define(DATA_XP, 0);
         builder.define(DATA_DOWNED, false);
+        builder.define(DATA_ARMOR, ItemStack.EMPTY);
+        builder.define(DATA_HEAD, ItemStack.EMPTY);
+    }
+
+    // ------------------------------------------------------------------ equipment
+
+    /** Slot {@link #GEAR_HEAD}: accessory, slot {@link #GEAR_ARMOR}: armour. Server side; clients see {@link #getArmor()}. */
+    public SimpleContainer getGear() {
+        return gear;
+    }
+
+    /** Saddlebag contents, usable while the armour carries a {@link DogUpgrade#BAG}. */
+    public SimpleContainer getBag() {
+        return bag;
+    }
+
+    /** The equipped armour as everyone sees it (synced). */
+    public ItemStack getArmor() {
+        return level().isClientSide ? entityData.get(DATA_ARMOR) : gear.getItem(GEAR_ARMOR);
+    }
+
+    public ItemStack getHeadAccessory() {
+        return level().isClientSide ? entityData.get(DATA_HEAD) : gear.getItem(GEAR_HEAD);
+    }
+
+    public boolean hasUpgrade(DogUpgrade upgrade) {
+        return DogArmorItem.hasUpgrade(getArmor(), upgrade);
+    }
+
+    /** View of the equipped armour's upgrade slots, for the dog menu. */
+    public Container upgradeContainer() {
+        return new UpgradeContainer();
+    }
+
+    private void onGearChanged() {
+        if (level().isClientSide) {
+            return;
+        }
+        entityData.set(DATA_ARMOR, gear.getItem(GEAR_ARMOR).copy());
+        entityData.set(DATA_HEAD, gear.getItem(GEAR_HEAD).copy());
+        applyLevelStats();
+    }
+
+    private void applyEquipmentStats() {
+        ItemStack armor = gear.getItem(GEAR_ARMOR);
+        DogArmorItem.Tier tier = armor.getItem() instanceof DogArmorItem item ? item.tier() : null;
+        modifier(Attributes.ARMOR, MOD_ARMOR, tier != null ? tier.armor() : 0, AttributeModifier.Operation.ADD_VALUE);
+        modifier(Attributes.ARMOR_TOUGHNESS, MOD_TOUGHNESS, tier != null ? tier.toughness() : 0, AttributeModifier.Operation.ADD_VALUE);
+        modifier(Attributes.ARMOR, MOD_PLATE, hasUpgrade(DogUpgrade.PLATE) ? 3 : 0, AttributeModifier.Operation.ADD_VALUE);
+        modifier(Attributes.ATTACK_DAMAGE, MOD_CLAWS, hasUpgrade(DogUpgrade.CLAWS) ? 2 : 0, AttributeModifier.Operation.ADD_VALUE);
+        modifier(Attributes.ATTACK_DAMAGE, MOD_JAW, hasUpgrade(DogUpgrade.JAW) ? 2 : 0, AttributeModifier.Operation.ADD_VALUE);
+        modifier(Attributes.ATTACK_KNOCKBACK, MOD_JAW_KNOCKBACK, hasUpgrade(DogUpgrade.JAW) ? 0.5 : 0, AttributeModifier.Operation.ADD_VALUE);
+        modifier(Attributes.MOVEMENT_SPEED, MOD_SHOES, hasUpgrade(DogUpgrade.RUNNING_SHOES) ? 0.15 : 0, AttributeModifier.Operation.ADD_MULTIPLIED_BASE);
+    }
+
+    private void modifier(Holder<Attribute> attribute, ResourceLocation id,
+                          double amount, AttributeModifier.Operation operation) {
+        AttributeInstance instance = getAttribute(attribute);
+        if (instance == null) {
+            return;
+        }
+        if (amount == 0) {
+            instance.removeModifier(id);
+        } else {
+            instance.addOrUpdateTransientModifier(new AttributeModifier(id, amount, operation));
+        }
+    }
+
+    /** Owner right-clicks with armour or an accessory: put it on, hand back what was there. */
+    private boolean tryEquip(Player player, ItemStack stack) {
+        int slot = stack.getItem() instanceof DogArmorItem ? GEAR_ARMOR : stack.getItem() instanceof DogAccessoryItem ? GEAR_HEAD : -1;
+        if (slot < 0) {
+            return false;
+        }
+        ItemStack old = gear.getItem(slot);
+        if (slot == GEAR_ARMOR && DogArmorItem.hasUpgrade(old, DogUpgrade.BAG) && !bag.isEmpty()) {
+            player.displayClientMessage(Component.translatable("message.goodboys.empty_bag_first", getDisplayName()), true);
+            return true;
+        }
+        gear.setItem(slot, stack.consumeAndReturn(1, player));
+        if (!old.isEmpty() && !player.getInventory().add(old)) {
+            player.drop(old, false);
+        }
+        playSound(slot == GEAR_ARMOR ? SoundEvents.ARMOR_EQUIP_WOLF.value() : SoundEvents.ARMOR_EQUIP_LEATHER.value(), 1.0F, 1.0F);
+        return true;
+    }
+
+    private void openMenu(Player player) {
+        if (player instanceof ServerPlayer serverPlayer) {
+            serverPlayer.openMenu(new SimpleMenuProvider((id, inventory, p) -> new DogMenu(id, inventory, this), getDisplayName()),
+                    buf -> buf.writeVarInt(getId()));
+        }
+    }
+
+    private void dropGear() {
+        for (int i = 0; i < gear.getContainerSize(); i++) {
+            spawnAtLocation(gear.removeItemNoUpdate(i));
+        }
+        for (int i = 0; i < bag.getContainerSize(); i++) {
+            spawnAtLocation(bag.removeItemNoUpdate(i));
+        }
+        onGearChanged();
+    }
+
+    @Override
+    protected void dropEquipment() {
+        super.dropEquipment();
+        dropGear();
+    }
+
+    /** The armour's upgrade list as a three-slot container; writes straight back into the armour item. */
+    private class UpgradeContainer implements Container {
+        private ItemStack armor() {
+            return gear.getItem(GEAR_ARMOR);
+        }
+
+        @Override
+        public int getContainerSize() {
+            return DogArmorItem.UPGRADE_SLOTS;
+        }
+
+        @Override
+        public boolean isEmpty() {
+            return DogArmorItem.getUpgrades(armor()).stream().allMatch(ItemStack::isEmpty);
+        }
+
+        @Override
+        public ItemStack getItem(int slot) {
+            return armor().getItem() instanceof DogArmorItem ? DogArmorItem.getUpgrades(armor()).get(slot) : ItemStack.EMPTY;
+        }
+
+        @Override
+        public ItemStack removeItem(int slot, int amount) {
+            ItemStack current = getItem(slot);
+            if (current.isEmpty()) {
+                return ItemStack.EMPTY;
+            }
+            ItemStack taken = current.split(amount);
+            setItem(slot, current);
+            return taken;
+        }
+
+        @Override
+        public ItemStack removeItemNoUpdate(int slot) {
+            ItemStack current = getItem(slot);
+            setItem(slot, ItemStack.EMPTY);
+            return current;
+        }
+
+        @Override
+        public void setItem(int slot, ItemStack stack) {
+            if (!(armor().getItem() instanceof DogArmorItem)) {
+                return;
+            }
+            List<ItemStack> upgrades = new ArrayList<>(DogArmorItem.getUpgrades(armor()));
+            upgrades.set(slot, stack);
+            DogArmorItem.setUpgrades(armor(), upgrades);
+            setChanged();
+        }
+
+        @Override
+        public void setChanged() {
+            gear.setChanged();
+        }
+
+        @Override
+        public boolean stillValid(Player player) {
+            return true;
+        }
+
+        @Override
+        public void clearContent() {
+            if (armor().getItem() instanceof DogArmorItem) {
+                DogArmorItem.setUpgrades(armor(), List.of());
+                setChanged();
+            }
+        }
     }
 
     // ------------------------------------------------------------------ survival (Happy Doggo knockouts)
@@ -263,6 +478,7 @@ public class Dog extends TamableAnimal implements GeoEntity {
     private void knockOut() {
         entityData.set(DATA_DOWNED, true);
         downedTicks = 0;
+        downedAge = 0;
         setNapping(false);
         setOrderedToSit(false);
         setInSittingPose(false);
@@ -292,6 +508,20 @@ public class Dog extends TamableAnimal implements GeoEntity {
     }
 
     private void tickDowned() {
+        downedAge++;
+        if (hasUpgrade(DogUpgrade.LIFE_VEST) && isInWater()) {
+            setAirSupply(getMaxAirSupply());
+            setDeltaMovement(getDeltaMovement().add(0, 0.04, 0)); // bob back up to the surface
+        }
+        if (downedAge >= FIELD_KIT_TICKS && getDogLevel() >= DogLevels.HEART_LEVEL && hasUpgrade(DogUpgrade.FIELD_KIT)) {
+            DogArmorItem.consumeUpgrade(gear.getItem(GEAR_ARMOR), DogUpgrade.FIELD_KIT);
+            gear.setChanged();
+            revive();
+            if (getOwner() instanceof Player owner) {
+                owner.sendSystemMessage(Component.translatable("message.goodboys.field_kit_used", getDisplayName()));
+            }
+            return;
+        }
         UUID ownerId = getOwnerUUID();
         boolean ownerOnline = ownerId != null && level().getServer() != null && level().getServer().getPlayerList().getPlayer(ownerId) != null;
         if (ownerOnline) {
@@ -375,6 +605,7 @@ public class Dog extends TamableAnimal implements GeoEntity {
         getAttribute(Attributes.MAX_HEALTH).setBaseValue(DogLevels.maxHealth(level, isTame()));
         getAttribute(Attributes.ATTACK_DAMAGE).setBaseValue(DogLevels.attack(level));
         getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(DogLevels.speed(level));
+        applyEquipmentStats();
         if (getHealth() > getMaxHealth()) {
             setHealth(getMaxHealth());
         }
@@ -431,6 +662,7 @@ public class Dog extends TamableAnimal implements GeoEntity {
         anchor = null;
         setOwnerUUID(null);
         setTame(false, true);
+        dropGear(); // the owner's things stay with the owner
         level().broadcastEntityEvent(this, (byte) 6); // smoke puff
     }
 
@@ -440,15 +672,6 @@ public class Dog extends TamableAnimal implements GeoEntity {
             PackData.get(level().getServer()).remove(getOwnerUUID(), getUUID());
         }
         super.remove(reason);
-    }
-
-    private void showStatus(Player player) {
-        int level = getDogLevel();
-        Component xp = level >= DogLevels.MAX_LEVEL
-                ? Component.translatable("message.goodboys.status.max")
-                : Component.translatable("message.goodboys.status.xp", getXp(), DogLevels.xpToNext(level));
-        player.displayClientMessage(Component.translatable("message.goodboys.status", getDisplayName(), level, xp,
-                Mth.ceil(getHealth()), Mth.ceil(getMaxHealth())), true);
     }
 
     private void handleRelease(Player player) {
@@ -680,6 +903,9 @@ public class Dog extends TamableAnimal implements GeoEntity {
         }
         tickShake();
         tickBoat();
+        if (isInWater() && hasUpgrade(DogUpgrade.LIFE_VEST)) {
+            setAirSupply(getMaxAirSupply());
+        }
 
         LivingEntity owner = getOwner();
         if (isTame() && !isNapping() && owner != null && distanceToSqr(owner) < 16 * 16
@@ -774,8 +1000,16 @@ public class Dog extends TamableAnimal implements GeoEntity {
         if (!level().isClientSide) {
             setNapping(false);
             setOrderedToSit(false);
+            if (source.is(DamageTypeTags.IS_FIRE) && hasUpgrade(DogUpgrade.FIRE_CLOTH)) {
+                amount *= 0.25F;
+            }
         }
-        return super.hurt(source, amount);
+        boolean hurt = super.hurt(source, amount);
+        if (hurt && !level().isClientSide && hasUpgrade(DogUpgrade.SPIKES) && !source.is(DamageTypes.THORNS)
+                && source.getDirectEntity() instanceof LivingEntity attacker && attacker != this) {
+            attacker.hurt(damageSources().thorns(this), 2.0F);
+        }
+        return hurt;
     }
 
     // ------------------------------------------------------------------ interaction
@@ -819,9 +1053,13 @@ public class Dog extends TamableAnimal implements GeoEntity {
                 return InteractionResult.SUCCESS;
             }
             if (stack.isEmpty()) {
-                showStatus(player);
+                openMenu(player);
                 return InteractionResult.SUCCESS;
             }
+        }
+
+        if (isOwnedBy(player) && tryEquip(player, stack)) {
+            return InteractionResult.SUCCESS;
         }
 
         if (isFood(stack) && getHealth() < getMaxHealth()) {
@@ -954,6 +1192,9 @@ public class Dog extends TamableAnimal implements GeoEntity {
         tag.putInt("CompanionTicks", companionTicks);
         tag.putBoolean("Downed", isDowned());
         tag.putInt("DownedTicks", downedTicks);
+        // with slot numbers: SimpleContainer#createTag would lose which slot each item was in
+        tag.put("Gear", ContainerHelper.saveAllItems(new CompoundTag(), gear.getItems(), registryAccess()));
+        tag.put("Bag", ContainerHelper.saveAllItems(new CompoundTag(), bag.getItems(), registryAccess()));
         if (anchor != null) {
             tag.putLong("Anchor", anchor.asLong());
         }
@@ -972,6 +1213,11 @@ public class Dog extends TamableAnimal implements GeoEntity {
         companionTicks = tag.getInt("CompanionTicks");
         entityData.set(DATA_DOWNED, tag.getBoolean("Downed"));
         downedTicks = tag.getInt("DownedTicks");
+        gear.clearContent();
+        bag.clearContent();
+        ContainerHelper.loadAllItems(tag.getCompound("Gear"), gear.getItems(), registryAccess());
+        ContainerHelper.loadAllItems(tag.getCompound("Bag"), bag.getItems(), registryAccess());
+        onGearChanged();
         applyLevelStats();
     }
 

@@ -4,6 +4,7 @@ import java.util.List;
 
 import javax.annotation.Nullable;
 
+import com.goodboys.client.TrackerHud;
 import com.goodboys.entity.Dog;
 import com.goodboys.entity.DogCommand;
 
@@ -37,7 +38,10 @@ public final class ModNetwork {
     }
 
     private static void registerPayloads(RegisterPayloadHandlersEvent event) {
-        event.registrar("1").playToServer(DogCommandPayload.TYPE, DogCommandPayload.STREAM_CODEC, ModNetwork::handleCommand);
+        event.registrar("1")
+                .playToServer(DogCommandPayload.TYPE, DogCommandPayload.STREAM_CODEC, ModNetwork::handleCommand)
+                // the lambda keeps the client-only HUD class from loading on dedicated servers
+                .playToClient(TrackerPayload.TYPE, TrackerPayload.STREAM_CODEC, (payload, context) -> context.enqueueWork(() -> TrackerHud.update(payload)));
     }
 
     private static void handleCommand(DogCommandPayload payload, IPayloadContext context) {

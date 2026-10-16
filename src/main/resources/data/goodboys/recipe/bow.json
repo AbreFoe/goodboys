@@ -1,0 +1,18 @@
+{
+  "type": "goodboys:dog_workbench",
+  "pattern": [
+    "PSP"
+  ],
+  "key": {
+    "P": {
+      "item": "minecraft:pink_wool"
+    },
+    "S": {
+      "item": "minecraft:string"
+    }
+  },
+  "result": {
+    "id": "goodboys:bow",
+    "count": 1
+  }
+}

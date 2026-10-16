@@ -1,0 +1,19 @@
+{
+  "type": "goodboys:dog_workbench",
+  "pattern": [
+    "RRR",
+    "W W"
+  ],
+  "key": {
+    "R": {
+      "item": "minecraft:red_wool"
+    },
+    "W": {
+      "item": "minecraft:white_wool"
+    }
+  },
+  "result": {
+    "id": "goodboys:beanie",
+    "count": 1
+  }
+}

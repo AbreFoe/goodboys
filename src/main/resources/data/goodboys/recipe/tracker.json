@@ -1,0 +1,23 @@
+{
+  "type": "goodboys:dog_workbench",
+  "pattern": [
+    " R ",
+    "NCN",
+    " R "
+  ],
+  "key": {
+    "R": {
+      "item": "minecraft:redstone"
+    },
+    "N": {
+      "item": "minecraft:iron_nugget"
+    },
+    "C": {
+      "item": "minecraft:compass"
+    }
+  },
+  "result": {
+    "id": "goodboys:tracker",
+    "count": 1
+  }
+}

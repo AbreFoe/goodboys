@@ -1,0 +1,23 @@
+{
+  "type": "goodboys:dog_workbench",
+  "pattern": [
+    " R ",
+    "PYP",
+    "PPP"
+  ],
+  "key": {
+    "R": {
+      "item": "minecraft:red_dye"
+    },
+    "P": {
+      "item": "minecraft:paper"
+    },
+    "Y": {
+      "item": "minecraft:yellow_dye"
+    }
+  },
+  "result": {
+    "id": "goodboys:party_hat",
+    "count": 1
+  }
+}

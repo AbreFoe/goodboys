@@ -1,0 +1,26 @@
+{
+  "type": "goodboys:dog_workbench",
+  "pattern": [
+    "PRP",
+    "HGH",
+    "PPP"
+  ],
+  "key": {
+    "P": {
+      "item": "minecraft:paper"
+    },
+    "R": {
+      "item": "minecraft:red_dye"
+    },
+    "H": {
+      "item": "minecraft:honey_bottle"
+    },
+    "G": {
+      "item": "minecraft:golden_carrot"
+    }
+  },
+  "result": {
+    "id": "goodboys:field_kit",
+    "count": 1
+  }
+}

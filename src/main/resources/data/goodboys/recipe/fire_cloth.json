@@ -1,0 +1,23 @@
+{
+  "type": "goodboys:dog_workbench",
+  "pattern": [
+    "MWM",
+    "WBW",
+    "MWM"
+  ],
+  "key": {
+    "M": {
+      "item": "minecraft:magma_cream"
+    },
+    "W": {
+      "tag": "minecraft:wool"
+    },
+    "B": {
+      "item": "minecraft:blaze_powder"
+    }
+  },
+  "result": {
+    "id": "goodboys:fire_cloth",
+    "count": 1
+  }
+}

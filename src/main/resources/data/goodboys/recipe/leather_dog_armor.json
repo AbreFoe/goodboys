@@ -1,0 +1,17 @@
+{
+  "type": "goodboys:dog_workbench",
+  "pattern": [
+    "  L",
+    "LLL",
+    "L L"
+  ],
+  "key": {
+    "L": {
+      "item": "minecraft:leather"
+    }
+  },
+  "result": {
+    "id": "goodboys:leather_dog_armor",
+    "count": 1
+  }
+}

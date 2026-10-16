@@ -1,0 +1,25 @@
+{
+  "type": "goodboys:dog_workbench",
+  "pattern": [
+    "PDA",
+    "V V"
+  ],
+  "key": {
+    "P": {
+      "item": "minecraft:poppy"
+    },
+    "D": {
+      "item": "minecraft:dandelion"
+    },
+    "A": {
+      "item": "minecraft:allium"
+    },
+    "V": {
+      "item": "minecraft:vine"
+    }
+  },
+  "result": {
+    "id": "goodboys:flower_crown",
+    "count": 1
+  }
+}

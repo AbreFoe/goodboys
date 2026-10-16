@@ -1,0 +1,9 @@
+{
+  "parent": "minecraft:block/orientable",
+  "textures": {
+    "top": "goodboys:block/dog_workbench_top",
+    "front": "goodboys:block/dog_workbench_front",
+    "side": "goodboys:block/dog_workbench_side",
+    "particle": "goodboys:block/dog_workbench_side"
+  }
+}

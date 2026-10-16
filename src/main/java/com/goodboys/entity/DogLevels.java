@@ -9,6 +9,8 @@ import net.minecraft.world.entity.player.Player;
 /** Dog progression numbers in one place: experience curve, rewards and what each level is worth. */
 public final class DogLevels {
     public static final int MAX_LEVEL = 25;
+    /** From this level a dog has the "Dog's Heart" perk: with a field kit it gets itself up from a knockout. */
+    public static final int HEART_LEVEL = 10;
 
     /** Experience for keeping the owner company, granted every {@link #COMPANION_INTERVAL} ticks. */
     public static final int COMPANION_XP = 2;
