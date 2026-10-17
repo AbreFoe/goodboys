@@ -670,6 +670,15 @@
 					]
 				},
 				{
+					"name": "mouth_item",
+					"parent": "jaw",
+					"pivot": [
+						0,
+						10.75,
+						-13.25
+					]
+				},
+				{
 					"name": "ear_left",
 					"parent": "head",
 					"pivot": [

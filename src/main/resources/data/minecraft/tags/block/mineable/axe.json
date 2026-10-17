@@ -1,6 +1,7 @@
 {
   "replace": false,
   "values": [
-    "goodboys:dog_workbench"
+    "goodboys:dog_workbench",
+    "goodboys:kennel"
   ]
 }

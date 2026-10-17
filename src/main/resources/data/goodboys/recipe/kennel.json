@@ -1,0 +1,20 @@
+{
+  "type": "goodboys:dog_workbench",
+  "pattern": [
+    " R ",
+    "RPR",
+    "P P"
+  ],
+  "key": {
+    "R": {
+      "item": "minecraft:red_terracotta"
+    },
+    "P": {
+      "tag": "minecraft:planks"
+    }
+  },
+  "result": {
+    "id": "goodboys:kennel",
+    "count": 1
+  }
+}

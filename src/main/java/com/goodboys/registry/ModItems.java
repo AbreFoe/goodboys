@@ -7,6 +7,8 @@ import com.goodboys.GoodBoys;
 import com.goodboys.item.DogAccessoryItem;
 import com.goodboys.item.DogAccessoryItem.Accessory;
 import com.goodboys.item.DogArmorItem;
+import com.goodboys.item.DogToyItem;
+import com.goodboys.item.DogToyItem.Toy;
 import com.goodboys.item.DogUpgrade;
 import com.goodboys.item.DogUpgradeItem;
 
@@ -33,6 +35,8 @@ public final class ModItems {
             () -> new DeferredSpawnEggItem(ModEntities.DOG, 0x7B3800, 0x271000, new Item.Properties()));
 
     public static final DeferredItem<BlockItem> DOG_WORKBENCH = ITEMS.registerSimpleBlockItem(ModBlocks.DOG_WORKBENCH);
+    public static final DeferredItem<BlockItem> DOG_BED = ITEMS.registerSimpleBlockItem(ModBlocks.DOG_BED);
+    public static final DeferredItem<BlockItem> KENNEL = ITEMS.registerSimpleBlockItem(ModBlocks.KENNEL);
 
     public static final DeferredItem<DogArmorItem> LEATHER_DOG_ARMOR = armor("leather_dog_armor", DogArmorItem.Tier.LEATHER, Rarity.COMMON);
     public static final DeferredItem<DogArmorItem> IRON_DOG_ARMOR = armor("iron_dog_armor", DogArmorItem.Tier.IRON, Rarity.COMMON);
@@ -40,6 +44,7 @@ public final class ModItems {
 
     public static final Map<DogUpgrade, DeferredItem<DogUpgradeItem>> UPGRADES = new EnumMap<>(DogUpgrade.class);
     public static final Map<Accessory, DeferredItem<DogAccessoryItem>> ACCESSORIES = new EnumMap<>(Accessory.class);
+    public static final Map<Toy, DeferredItem<DogToyItem>> TOYS = new EnumMap<>(Toy.class);
 
     static {
         for (DogUpgrade upgrade : DogUpgrade.values()) {
@@ -47,6 +52,9 @@ public final class ModItems {
         }
         for (Accessory accessory : Accessory.values()) {
             ACCESSORIES.put(accessory, ITEMS.register(accessory.id(), () -> new DogAccessoryItem(accessory, new Item.Properties())));
+        }
+        for (Toy toy : Toy.values()) {
+            TOYS.put(toy, ITEMS.register(toy.id(), () -> new DogToyItem(toy, new Item.Properties())));
         }
     }
 
@@ -56,6 +64,9 @@ public final class ModItems {
             .withTabsBefore(CreativeModeTabs.SPAWN_EGGS)
             .displayItems((params, output) -> {
                 output.accept(DOG_WORKBENCH);
+                output.accept(KENNEL);
+                output.accept(DOG_BED);
+                TOYS.values().forEach(output::accept);
                 output.accept(LEATHER_DOG_ARMOR);
                 output.accept(IRON_DOG_ARMOR);
                 output.accept(DIAMOND_DOG_ARMOR);

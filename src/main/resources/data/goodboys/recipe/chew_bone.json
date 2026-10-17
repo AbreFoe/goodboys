@@ -1,0 +1,18 @@
+{
+  "type": "goodboys:dog_workbench",
+  "pattern": [
+    "PBP"
+  ],
+  "key": {
+    "P": {
+      "item": "minecraft:pink_dye"
+    },
+    "B": {
+      "item": "minecraft:bone"
+    }
+  },
+  "result": {
+    "id": "goodboys:chew_bone",
+    "count": 1
+  }
+}

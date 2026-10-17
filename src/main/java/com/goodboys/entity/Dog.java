@@ -7,9 +7,12 @@ import java.util.UUID;
 import javax.annotation.Nullable;
 
 import com.goodboys.GoodBoys;
+import com.goodboys.block.DogRestBlock;
 import com.goodboys.entity.ai.DogAreaGoal;
 import com.goodboys.entity.ai.DogBegGoal;
 import com.goodboys.entity.ai.DogPlayGoal;
+import com.goodboys.entity.ai.DogRestSpotGoal;
+import com.goodboys.entity.ai.DogToyGoal;
 import com.goodboys.item.DogAccessoryItem;
 import com.goodboys.item.DogArmorItem;
 import com.goodboys.item.DogUpgrade;
@@ -32,6 +35,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.tags.TagKey;
@@ -72,6 +76,7 @@ import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.ai.goal.target.OwnerHurtByTargetGoal;
 import net.minecraft.world.entity.ai.goal.target.OwnerHurtTargetGoal;
 import net.minecraft.world.entity.animal.Animal;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.animal.horse.AbstractHorse;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.Enemy;
@@ -83,9 +88,11 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.ServerLevelAccessor;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.gameevent.GameEvent;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.event.EventHooks;
 import software.bernie.geckolib.animatable.GeoEntity;
@@ -134,6 +141,18 @@ public class Dog extends TamableAnimal implements GeoEntity {
             SynchedEntityData.defineId(Dog.class, EntityDataSerializers.ITEM_STACK);
     private static final EntityDataAccessor<Integer> DATA_VARIANT =
             SynchedEntityData.defineId(Dog.class, EntityDataSerializers.INT);
+    /** The toy (or anything else) held in the mouth. */
+    private static final EntityDataAccessor<ItemStack> DATA_CARRIED =
+            SynchedEntityData.defineId(Dog.class, EntityDataSerializers.ITEM_STACK);
+    /** Lying down awake after standing about for a while. */
+    private static final EntityDataAccessor<Boolean> DATA_RESTING =
+            SynchedEntityData.defineId(Dog.class, EntityDataSerializers.BOOLEAN);
+    /** Lying down gnawing a chew toy. */
+    private static final EntityDataAccessor<Boolean> DATA_CHEWING =
+            SynchedEntityData.defineId(Dog.class, EntityDataSerializers.BOOLEAN);
+    /** Standing still this long (and not sitting) makes a dog lie down for a rest. */
+    private static final int REST_AFTER_TICKS = 20 * 30;
+    private static final int SETTLE_TICKS = 34;
 
     public static final int GEAR_HEAD = 0;
     public static final int GEAR_ARMOR = 1;
@@ -176,6 +195,10 @@ public class Dog extends TamableAnimal implements GeoEntity {
     private static final RawAnimation HEAD_TILT = RawAnimation.begin().thenLoop("animation.dog.head_tilt");
     private static final RawAnimation KNOCKED_OUT = RawAnimation.begin().thenLoop("animation.dog.knocked_out");
     private static final RawAnimation BLINK = RawAnimation.begin().thenLoop("animation.dog.blink");
+    private static final RawAnimation REST = RawAnimation.begin().thenLoop("animation.dog.rest");
+    private static final RawAnimation CHEW = RawAnimation.begin().thenLoop("animation.dog.chew");
+    private static final RawAnimation BEG = RawAnimation.begin().thenLoop("animation.dog.beg");
+    private static final RawAnimation CARRY = RawAnimation.begin().thenLoop("animation.dog.carry");
 
     private final AnimatableInstanceCache geoCache = GeckoLibUtil.createInstanceCache(this);
     private int sitTicks;
@@ -191,6 +214,23 @@ public class Dog extends TamableAnimal implements GeoEntity {
     private long releaseArmedUntil;
     private int downedTicks;
     private int downedAge;
+    // toys, rest spots, resting
+    private int toyCooldown;
+    private int chewTicks;
+    private int stillTicks;
+    private int restTicks;
+    private int pounceIn;
+    @Nullable
+    private Vec3 pounceAt;
+    @Nullable
+    private BlockPos restSpot;
+    private boolean restSpotIsAuto;
+    private boolean wantsRestSpot;
+    private int settleTicks;
+    private int restHealTicks;
+    private String currentAction = "";
+    /** Client side: how much the head follows the look target (eased in/out by DogGeoModel). */
+    public float lookWeight = 1.0F;
     private final SimpleContainer gear = new SimpleContainer(2);
     private final SimpleContainer bag = new SimpleContainer(DogMenu.BAG_SIZE);
     /** Set while a hit is allowed to really kill the dog, so die() doesn't turn it into a knockout. */
@@ -250,7 +290,9 @@ public class Dog extends TamableAnimal implements GeoEntity {
                 return (!isTame() || getMode() == DogMode.FOLLOW) && super.canUse();
             }
         });
+        goalSelector.addGoal(5, new DogRestSpotGoal(this));
         goalSelector.addGoal(7, new DogPlayGoal(this));
+        goalSelector.addGoal(7, new DogToyGoal(this));
         goalSelector.addGoal(8, new WaterAvoidingRandomStrollGoal(this, 1.0) {
             @Override
             public boolean canUse() {
@@ -313,6 +355,9 @@ public class Dog extends TamableAnimal implements GeoEntity {
         builder.define(DATA_ARMOR, ItemStack.EMPTY);
         builder.define(DATA_HEAD, ItemStack.EMPTY);
         builder.define(DATA_VARIANT, DogVariant.SHEPHERD.ordinal());
+        builder.define(DATA_CARRIED, ItemStack.EMPTY);
+        builder.define(DATA_RESTING, false);
+        builder.define(DATA_CHEWING, false);
     }
 
     // ------------------------------------------------------------------ coat
@@ -423,6 +468,7 @@ public class Dog extends TamableAnimal implements GeoEntity {
     }
 
     private void dropGear() {
+        dropCarried(Vec3.ZERO);
         for (int i = 0; i < gear.getContainerSize(); i++) {
             spawnAtLocation(gear.removeItemNoUpdate(i));
         }
@@ -525,6 +571,9 @@ public class Dog extends TamableAnimal implements GeoEntity {
     }
 
     private void knockOut() {
+        dropCarried(Vec3.ZERO);
+        setChewing(false);
+        setResting(false);
         entityData.set(DATA_DOWNED, true);
         downedTicks = 0;
         downedAge = 0;
@@ -762,6 +811,21 @@ public class Dog extends TamableAnimal implements GeoEntity {
      */
     public void command(DogCommand command, @Nullable BlockPos pos, @Nullable LivingEntity target) {
         setNapping(false);
+        setResting(false);
+        setChewing(false);
+        restSpot = null;
+        wantsRestSpot = false;
+        if (command != DogCommand.FIND && !getCarried().isEmpty()) {
+            dropCarried(Vec3.ZERO);
+        }
+        if (command == DogCommand.SIT && findFreeRestSpot(this, blockPosition(), 6) != null) {
+            wantsRestSpot = true; // a bed or kennel close by: go and lie down there
+            setOrderedToSit(false);
+            setInSittingPose(false);
+            navigation.stop();
+            setTarget(null);
+            return;
+        }
         if (command != DogCommand.SIT && command != DogCommand.FIND) {
             triggerAnim("actions", "bark"); // "on it!"
             playSound(SoundEvents.WOLF_AMBIENT, 0.6F, 1.15F + random.nextFloat() * 0.2F);
@@ -858,7 +922,9 @@ public class Dog extends TamableAnimal implements GeoEntity {
 
     public void setNapping(boolean napping) {
         if (napping && !isNapping()) {
-            entityData.set(DATA_NAP_STYLE, random.nextInt(NAP_STYLES)); // a different pose each nap
+            BlockState spot = restSpot != null ? level().getBlockState(restSpot) : null;
+            int style = spot != null && spot.getBlock() instanceof DogRestBlock rest ? rest.napStyle() : random.nextInt(NAP_STYLES);
+            entityData.set(DATA_NAP_STYLE, style); // a different pose each nap (or the bed's)
         }
         entityData.set(DATA_NAPPING, napping);
         if (!napping) {
@@ -900,7 +966,7 @@ public class Dog extends TamableAnimal implements GeoEntity {
 
     /** In the middle of a short idle animation (sniff, stretch, shake...) that wandering would break. */
     public boolean isBusy() {
-        return actionTicks > 0 || isInterested() || isDowned();
+        return actionTicks > 0 || isInterested() || isDowned() || isResting() || isChewing() || !getCarried().isEmpty() || settleTicks > 0;
     }
 
     public boolean isShaking() {
@@ -908,30 +974,249 @@ public class Dog extends TamableAnimal implements GeoEntity {
     }
 
     private void playAction(String animation, int ticks) {
+        currentAction = animation;
         triggerAnim("actions", animation);
         actionTicks = ticks;
         navigation.stop();
     }
 
     private void pickIdleAction() {
-        if (isNapping() || isInWater() || !onGround() || getTarget() != null || isInterested() || isExcited()) {
+        if (isNapping() || isInWater() || !onGround() || getTarget() != null || isInterested() || isExcited()
+                || isChewing() || !getCarried().isEmpty() || settleTicks > 0) {
             return;
         }
         if (isInSittingPose()) {
-            if (random.nextBoolean()) {
-                playAction("scratch", 40);
+            int roll = random.nextInt(10);
+            if (level().isNight() && roll == 0) {
+                playAction("howl", 68);
+                playSound(SoundEvents.WOLF_HOWL, 1.2F, 0.9F + random.nextFloat() * 0.2F);
+            } else if (roll < 5) {
+                playAction("scratch", 44);
+            } else if (roll < 8) {
+                playAction("yawn", 36);
             } else {
-                playAction("yawn", 32);
+                playAction("sneeze", 19);
+                playSound(SoundEvents.FOX_SNIFF, 0.8F, 1.6F);
+            }
+            return;
+        }
+        if (isResting()) {
+            if (random.nextBoolean()) {
+                playAction("yawn", 36);
             }
             return;
         }
         if (!navigation.isDone()) {
             return;
         }
-        switch (random.nextInt(3)) {
-            case 0 -> playAction("sniff", 50);
-            case 1 -> playAction("stretch", 60);
-            default -> playAction("yawn", 32);
+        LivingEntity owner = getOwner();
+        boolean ownerNear = owner != null && distanceToSqr(owner) < 6 * 6;
+        BlockState ground = level().getBlockState(getOnPos());
+        boolean soft = ground.is(BlockTags.DIRT) || ground.is(BlockTags.SAND) || ground.is(Blocks.SNOW_BLOCK);
+        int roll = random.nextInt(12);
+        if (roll < 3) {
+            playAction("sniff", 54);
+        } else if (roll < 5) {
+            playAction("stretch", 64);
+        } else if (roll < 7) {
+            playAction("yawn", 36);
+        } else if (roll < 8) {
+            playAction("sneeze", 19);
+            playSound(SoundEvents.FOX_SNIFF, 0.8F, 1.6F);
+        } else if (roll < 10 && soft && getMode() != DogMode.GUARD) {
+            playAction("dig", 48);
+        } else if (roll < 12 && ownerNear && isTame()) {
+            playAction("roll_over", 64);
+        }
+    }
+
+    // ------------------------------------------------------------------ toys, resting, rest spots
+
+    public ItemStack getCarried() {
+        return entityData.get(DATA_CARRIED);
+    }
+
+    private void setCarried(ItemStack stack) {
+        entityData.set(DATA_CARRIED, stack);
+    }
+
+    public boolean isResting() {
+        return entityData.get(DATA_RESTING);
+    }
+
+    public void setResting(boolean resting) {
+        entityData.set(DATA_RESTING, resting);
+        if (!resting) {
+            stillTicks = 0;
+        }
+    }
+
+    public boolean isChewing() {
+        return entityData.get(DATA_CHEWING);
+    }
+
+    public void setChewing(boolean chewing) {
+        entityData.set(DATA_CHEWING, chewing);
+    }
+
+    public void setChewTicks(int ticks) {
+        chewTicks = ticks;
+    }
+
+    public int getToyCooldown() {
+        return toyCooldown;
+    }
+
+    public void setToyCooldown(int ticks) {
+        toyCooldown = ticks;
+    }
+
+    /** Takes one item from a stack lying on the ground into the mouth. */
+    public void pickUp(ItemEntity item) {
+        ItemStack stack = item.getItem();
+        setCarried(stack.copyWithCount(1));
+        stack.shrink(1);
+        if (stack.isEmpty()) {
+            item.discard();
+        } else {
+            item.setItem(stack);
+        }
+        playSound(SoundEvents.ITEM_PICKUP, 0.4F, 1.4F);
+    }
+
+    /** Lets go of what's in the mouth, giving it a little throw. Returns the dropped item, if any. */
+    @Nullable
+    public ItemEntity dropCarried(Vec3 motion) {
+        ItemStack stack = getCarried();
+        if (stack.isEmpty() || level().isClientSide) {
+            return null;
+        }
+        setCarried(ItemStack.EMPTY);
+        Vec3 mouth = position().add(Vec3.directionFromRotation(0, yBodyRot).scale(0.7)).add(0, 0.45, 0);
+        ItemEntity item = new ItemEntity(level(), mouth.x, mouth.y, mouth.z, stack, motion.x, motion.y, motion.z);
+        item.setPickUpDelay(10);
+        level().addFreshEntity(item);
+        return item;
+    }
+
+    /** The pounce animation leaves the ground after a moment; the shove forward happens then. */
+    public void schedulePounce(int ticks, Vec3 at) {
+        pounceIn = ticks;
+        pounceAt = at;
+    }
+
+    @Nullable
+    public BlockPos getRestSpot() {
+        return restSpot;
+    }
+
+    public boolean wantsRestSpot() {
+        return wantsRestSpot;
+    }
+
+    /** No bed or kennel to be had: sit down on the spot instead, if that was the order. */
+    public void cancelRestSpot(boolean sitInstead) {
+        wantsRestSpot = false;
+        if (sitInstead) {
+            setOrderedToSit(true);
+            setInSittingPose(true);
+        }
+    }
+
+    /** A pet bed or kennel near {@code around} that no other dog is using. */
+    @Nullable
+    public static BlockPos findFreeRestSpot(Dog dog, BlockPos around, double radius) {
+        int r = (int) Math.ceil(radius);
+        BlockPos best = null;
+        double bestDist = Double.MAX_VALUE;
+        List<Dog> others = dog.level().getEntitiesOfClass(Dog.class, new AABB(around).inflate(radius + 4), d -> d != dog);
+        for (BlockPos pos : BlockPos.betweenClosed(around.offset(-r, -2, -r), around.offset(r, 2, r))) {
+            BlockState state = dog.level().getBlockState(pos);
+            if (!(state.getBlock() instanceof DogRestBlock rest)) {
+                continue;
+            }
+            Vec3 at = rest.restPosition(state, pos);
+            boolean taken = others.stream().anyMatch(o -> pos.equals(o.getRestSpot()) || o.position().distanceToSqr(at) < 0.5 * 0.5);
+            double dist = dog.distanceToSqr(at);
+            if (!taken && dist < bestDist) {
+                best = pos.immutable();
+                bestDist = dist;
+            }
+        }
+        return best;
+    }
+
+    /** Arrived at a bed or kennel: hop into place, turn round once and lie down. */
+    public void settleAt(BlockPos spot, boolean auto) {
+        BlockState state = level().getBlockState(spot);
+        if (!(state.getBlock() instanceof DogRestBlock rest)) {
+            return;
+        }
+        Vec3 at = rest.restPosition(state, spot);
+        navigation.stop();
+        setPos(at.x, at.y, at.z);
+        float yaw = rest.restYaw(state);
+        if (!Float.isNaN(yaw)) {
+            setYRot(yaw);
+            setYBodyRot(yaw);
+            setYHeadRot(yaw);
+        }
+        restSpot = spot.immutable();
+        restSpotIsAuto = auto;
+        wantsRestSpot = false;
+        settleTicks = SETTLE_TICKS;
+        setResting(false);
+        triggerAnim("actions", "settle");
+    }
+
+    private void tickToysAndRest() {
+        if (toyCooldown > 0) {
+            toyCooldown--;
+        }
+        if (isChewing() && --chewTicks <= 0) {
+            setChewing(false);
+        }
+        if (pounceIn > 0 && --pounceIn == 0 && pounceAt != null && onGround()) {
+            Vec3 dir = pounceAt.subtract(position()).multiply(1, 0, 1).normalize();
+            setDeltaMovement(dir.scale(0.45).add(0, 0.32, 0));
+            pounceAt = null;
+        }
+
+        // bed / kennel: settle in, then nap; heal faster while napping there; up again in the morning
+        if (settleTicks > 0 && --settleTicks == 0) {
+            setOrderedToSit(true);
+            setInSittingPose(true);
+            sitTicks = NAP_DELAY_TICKS - 1;
+        }
+        if (restSpot != null) {
+            BlockState state = level().getBlockState(restSpot);
+            boolean valid = state.getBlock() instanceof DogRestBlock rest && position().distanceToSqr(rest.restPosition(state, restSpot)) < 1.0;
+            if (!valid || settleTicks == 0 && !isOrderedToSit()) {
+                restSpot = null;
+            } else if (isNapping() && getHealth() < getMaxHealth() && ++restHealTicks >= 60) {
+                restHealTicks = 0;
+                heal(1.0F);
+            }
+            if (restSpot != null && restSpotIsAuto && level().isDay() && isNapping()) {
+                restSpot = null; // morning: back to waiting around
+                setOrderedToSit(false);
+                setInSittingPose(false);
+            }
+        }
+
+        // standing about with nothing to do for long enough: lie down for a rest
+        boolean still = isTame() && onGround() && navigation.isDone() && !isOrderedToSit() && !isNapping() && getTarget() == null
+                && getCarried().isEmpty() && !isExcited() && !isInWater() && getDeltaMovement().horizontalDistanceSqr() < 1.0E-4;
+        if (!still) {
+            if (isResting() && (!navigation.isDone() || getTarget() != null || isOrderedToSit())) {
+                setResting(false);
+            }
+            stillTicks = 0;
+        } else if (!isResting() && ++stillTicks > REST_AFTER_TICKS && random.nextInt(40) == 0) {
+            setResting(true);
+            restTicks = 600 + random.nextInt(1200);
+        } else if (isResting() && --restTicks <= 0) {
+            setResting(false);
         }
     }
 
@@ -956,6 +1241,7 @@ public class Dog extends TamableAnimal implements GeoEntity {
         if (playCooldown > 0) {
             playCooldown--;
         }
+        tickToysAndRest();
         tickShake();
         tickBoat();
         if (isInWater() && hasUpgrade(DogUpgrade.LIFE_VEST)) {
@@ -978,6 +1264,11 @@ public class Dog extends TamableAnimal implements GeoEntity {
 
         if (actionTicks > 0) {
             actionTicks--;
+            if ("dig".equals(currentAction) && actionTicks % 3 == 0 && actionTicks > 6 && level() instanceof ServerLevel serverLevel) {
+                Vec3 front = position().add(Vec3.directionFromRotation(0, yBodyRot).scale(0.5));
+                serverLevel.sendParticles(new BlockParticleOption(ParticleTypes.BLOCK, level().getBlockState(getOnPos())),
+                        front.x, getY() + 0.1, front.z, 4, 0.15, 0.05, 0.15, 0.1);
+            }
             // walking off (following the owner, chasing) cuts the little animation short
             boolean interrupted = getTarget() != null || !navigation.isDone() && !isInSittingPose();
             if (interrupted && shakeTicks == 0) {
@@ -1011,7 +1302,7 @@ public class Dog extends TamableAnimal implements GeoEntity {
     /** Stands still while shaking off water, even if the owner walks away. */
     @Override
     protected boolean isImmobile() {
-        return super.isImmobile() || shakeTicks > 0 || isDowned();
+        return super.isImmobile() || shakeTicks > 0 || isDowned() || settleTicks > 0 || isChewing();
     }
 
     @Override
@@ -1136,6 +1427,16 @@ public class Dog extends TamableAnimal implements GeoEntity {
         }
 
         if (isOwnedBy(player) && tryEquip(player, stack)) {
+            return InteractionResult.SUCCESS;
+        }
+
+        if (isOwnedBy(player) && stack.isEmpty() && !getCarried().isEmpty()) {
+            ItemStack toy = getCarried();
+            setCarried(ItemStack.EMPTY);
+            if (!player.getInventory().add(toy)) {
+                player.drop(toy, false);
+            }
+            playSound(SoundEvents.ITEM_PICKUP, 0.5F, 1.2F);
             return InteractionResult.SUCCESS;
         }
 
@@ -1269,6 +1570,13 @@ public class Dog extends TamableAnimal implements GeoEntity {
         tag.putInt("CompanionTicks", companionTicks);
         tag.putBoolean("Downed", isDowned());
         tag.putString("Variant", getVariant().id());
+        if (!getCarried().isEmpty()) {
+            tag.put("Carried", getCarried().save(registryAccess()));
+        }
+        if (restSpot != null) {
+            tag.putLong("RestSpot", restSpot.asLong());
+            tag.putBoolean("RestSpotAuto", restSpotIsAuto);
+        }
         tag.putInt("DownedTicks", downedTicks);
         // with slot numbers: SimpleContainer#createTag would lose which slot each item was in
         tag.put("Gear", ContainerHelper.saveAllItems(new CompoundTag(), gear.getItems(), registryAccess()));
@@ -1290,6 +1598,9 @@ public class Dog extends TamableAnimal implements GeoEntity {
         entityData.set(DATA_XP, Math.max(0, tag.getInt("Xp")));
         companionTicks = tag.getInt("CompanionTicks");
         entityData.set(DATA_DOWNED, tag.getBoolean("Downed"));
+        setCarried(tag.contains("Carried") ? ItemStack.parseOptional(registryAccess(), tag.getCompound("Carried")) : ItemStack.EMPTY);
+        restSpot = tag.contains("RestSpot") ? BlockPos.of(tag.getLong("RestSpot")) : null;
+        restSpotIsAuto = tag.getBoolean("RestSpotAuto");
         for (DogVariant variant : DogVariant.values()) {
             if (variant.id().equals(tag.getString("Variant"))) {
                 setVariant(variant);
@@ -1312,6 +1623,9 @@ public class Dog extends TamableAnimal implements GeoEntity {
         controllers.add(new AnimationController<>(this, "body", 5, this::bodyAnimation));
         controllers.add(new AnimationController<>(this, "tail", 5, this::tailAnimation));
         controllers.add(new AnimationController<>(this, "head", 5, this::headAnimation));
+        // the jaw closes round whatever is carried
+        controllers.add(new AnimationController<>(this, "mouth", 3,
+                state -> !getCarried().isEmpty() && !isNapping() && !isChewing() ? state.setAndContinue(CARRY) : PlayState.STOP));
         // eyes blink while awake; asleep or knocked out the body clip keeps them shut
         controllers.add(new AnimationController<>(this, "eyes", 0,
                 state -> isNapping() || isDowned() ? PlayState.STOP : state.setAndContinue(BLINK)));
@@ -1323,7 +1637,15 @@ public class Dog extends TamableAnimal implements GeoEntity {
                 .triggerableAnim("sniff", action("sniff"))
                 .triggerableAnim("stretch", action("stretch"))
                 .triggerableAnim("yawn", action("yawn"))
-                .triggerableAnim("scratch", action("scratch")));
+                .triggerableAnim("scratch", action("scratch"))
+                .triggerableAnim("sneeze", action("sneeze"))
+                .triggerableAnim("dig", action("dig"))
+                .triggerableAnim("roll_over", action("roll_over"))
+                .triggerableAnim("howl", action("howl"))
+                .triggerableAnim("toy_shake", action("toy_shake"))
+                .triggerableAnim("toss", action("toss"))
+                .triggerableAnim("pounce", action("pounce"))
+                .triggerableAnim("settle", action("settle")));
     }
 
     private static RawAnimation action(String name) {
@@ -1343,8 +1665,14 @@ public class Dog extends TamableAnimal implements GeoEntity {
         if (isNapping()) {
             return state.setAndContinue(NAPS[Math.floorMod(getNapStyle(), NAP_STYLES)]);
         }
+        if (isChewing()) {
+            return state.setAndContinue(CHEW);
+        }
         if (isInSittingPose() || isPassenger()) {
-            return state.setAndContinue(SIT);
+            return state.setAndContinue(isInterested() && isInSittingPose() ? BEG : SIT);
+        }
+        if (isResting() && !state.isMoving()) {
+            return state.setAndContinue(REST);
         }
         if (state.isMoving()) {
             boolean running = isAggressive() || isExcited() || state.getLimbSwingAmount() > 0.75F;

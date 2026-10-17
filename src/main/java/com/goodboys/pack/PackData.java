@@ -44,6 +44,9 @@ public class PackData extends SavedData {
     }
 
     public void add(UUID owner, UUID dog) {
+        if (owner == null || dog == null) {
+            return; // wild dogs belong to no pack
+        }
         if (packs.computeIfAbsent(owner, k -> new LinkedHashSet<>()).add(dog)) {
             setDirty();
         }
@@ -63,6 +66,9 @@ public class PackData extends SavedData {
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
         ListTag list = new ListTag();
         packs.forEach((owner, dogs) -> {
+            if (owner == null) {
+                return;
+            }
             CompoundTag entry = new CompoundTag();
             entry.putUUID("Owner", owner);
             ListTag members = new ListTag();

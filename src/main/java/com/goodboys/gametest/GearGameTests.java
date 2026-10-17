@@ -163,7 +163,7 @@ public class GearGameTests {
                 .orElse(ItemStack.EMPTY);
         helper.assertTrue(result.is(ModItems.IRON_DOG_ARMOR.get()), "iron dog armour recipe not found, got " + result);
         int count = helper.getLevel().getRecipeManager().getAllRecipesFor(ModRecipes.DOG_WORKBENCH.get()).size();
-        helper.assertTrue(count == 19, "expected 19 workbench recipes, found " + count);
+        helper.assertTrue(count == 24, "expected 24 workbench recipes, found " + count);
         helper.succeed();
     }
 }

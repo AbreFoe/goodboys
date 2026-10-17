@@ -102,5 +102,13 @@
   "gui.goodboys.command.attack.info": "Goes for what you look at",
   "gui.goodboys.command.hunt.info": "Follows you and hunts game nearby",
   "gui.goodboys.command.find.info": "Not ready yet",
-  "gui.goodboys.look.order": "%s"
+  "gui.goodboys.look.order": "%s",
+  "block.goodboys.kennel": "Kennel",
+  "block.goodboys.dog_bed": "Pet Bed",
+  "item.goodboys.tennis_ball": "Tennis Ball",
+  "item.goodboys.tennis_ball.info": "Throw it (right-click) and your dog brings it back",
+  "item.goodboys.chew_bone": "Chew Bone",
+  "item.goodboys.chew_bone.info": "Leave it about: a dog will lie down and chew it",
+  "item.goodboys.rope_toy": "Rope Toy",
+  "item.goodboys.rope_toy.info": "Dogs shake it, toss it and pounce on it"
 }

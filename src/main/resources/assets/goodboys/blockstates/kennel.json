@@ -1,0 +1,19 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "goodboys:block/kennel"
+    },
+    "facing=east": {
+      "model": "goodboys:block/kennel",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "goodboys:block/kennel",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "goodboys:block/kennel",
+      "y": 270
+    }
+  }
+}

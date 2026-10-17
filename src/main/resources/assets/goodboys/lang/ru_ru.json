@@ -102,5 +102,13 @@
   "gui.goodboys.command.attack.info": "Бросается на то, на что смотришь",
   "gui.goodboys.command.hunt.info": "Идёт за тобой и охотится на дичь",
   "gui.goodboys.command.find.info": "Пока не готово",
-  "gui.goodboys.look.order": "%s"
+  "gui.goodboys.look.order": "%s",
+  "block.goodboys.kennel": "Будка",
+  "block.goodboys.dog_bed": "Лежанка",
+  "item.goodboys.tennis_ball": "Теннисный мячик",
+  "item.goodboys.tennis_ball.info": "Брось (ПКМ), и собака принесёт его обратно",
+  "item.goodboys.chew_bone": "Косточка-грызунок",
+  "item.goodboys.chew_bone.info": "Оставь на земле: собака уляжется и будет грызть",
+  "item.goodboys.rope_toy": "Канат",
+  "item.goodboys.rope_toy.info": "Собака его треплет, подбрасывает и прыгает на него"
 }

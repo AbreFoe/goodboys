@@ -14,6 +14,7 @@ import com.goodboys.item.DogArmorItem;
 import com.goodboys.item.DogUpgrade;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.math.Axis;
 
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
@@ -23,6 +24,7 @@ import net.minecraft.world.item.ItemStack;
 import software.bernie.geckolib.cache.object.BakedGeoModel;
 import software.bernie.geckolib.cache.object.GeoBone;
 import software.bernie.geckolib.renderer.GeoEntityRenderer;
+import software.bernie.geckolib.renderer.layer.BlockAndItemGeoLayer;
 
 /**
  * Uses geo/entity/dog.geo.json, animations/entity/dog.animation.json and textures/entity/dog.png.
@@ -35,6 +37,17 @@ public class DogRenderer extends GeoEntityRenderer<Dog> {
     public DogRenderer(EntityRendererProvider.Context context) {
         super(context, new DogGeoModel());
         shadowRadius = 0.5F;
+        // whatever the dog carries sits in its mouth, crosswise like a stick
+        addRenderLayer(new BlockAndItemGeoLayer<>(this, (bone, dog) -> "mouth_item".equals(bone.getName()) && !dog.getCarried().isEmpty() ? dog.getCarried() : null, (bone, dog) -> null) {
+            @Override
+            protected void renderStackForBone(PoseStack poseStack, GeoBone bone, ItemStack stack, Dog dog, MultiBufferSource buffers,
+                                              float partialTick, int packedLight, int packedOverlay) {
+                poseStack.mulPose(Axis.XP.rotationDegrees(-90));
+                poseStack.mulPose(Axis.YP.rotationDegrees(90));
+                poseStack.scale(0.55F, 0.55F, 0.55F);
+                super.renderStackForBone(poseStack, bone, stack, dog, buffers, partialTick, packedLight, packedOverlay);
+            }
+        });
     }
 
     @Override

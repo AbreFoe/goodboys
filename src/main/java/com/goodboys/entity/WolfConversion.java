@@ -43,9 +43,11 @@ public final class WolfConversion {
             return null;
         }
         dog.setVariant(variant);
-        dog.setTame(true, true);
-        dog.setOwnerUUID(wolf.getOwnerUUID());
-        PackData.get(dog.level().getServer()).add(wolf.getOwnerUUID(), dog.getUUID());
+        if (wolf.getOwnerUUID() != null) {
+            dog.setTame(true, true);
+            dog.setOwnerUUID(wolf.getOwnerUUID());
+            PackData.get(dog.level().getServer()).add(wolf.getOwnerUUID(), dog.getUUID());
+        }
         dog.setOrderedToSit(sitting);
         dog.setInSittingPose(sitting);
         dog.setHealth(Math.max(1.0F, health * dog.getMaxHealth()));

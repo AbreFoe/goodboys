@@ -1,0 +1,19 @@
+{
+  "type": "goodboys:dog_workbench",
+  "pattern": [
+    "SL",
+    "LS"
+  ],
+  "key": {
+    "S": {
+      "item": "minecraft:slime_ball"
+    },
+    "L": {
+      "item": "minecraft:lime_wool"
+    }
+  },
+  "result": {
+    "id": "goodboys:tennis_ball",
+    "count": 2
+  }
+}

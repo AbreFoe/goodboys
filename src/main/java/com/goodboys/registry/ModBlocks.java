@@ -1,7 +1,9 @@
 package com.goodboys.registry;
 
 import com.goodboys.GoodBoys;
+import com.goodboys.block.DogBedBlock;
 import com.goodboys.block.DogWorkbenchBlock;
+import com.goodboys.block.KennelBlock;
 
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockBehaviour;
@@ -14,6 +16,11 @@ public final class ModBlocks {
 
     public static final DeferredBlock<DogWorkbenchBlock> DOG_WORKBENCH = BLOCKS.register("dog_workbench",
             () -> new DogWorkbenchBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.CRAFTING_TABLE)));
+
+    public static final DeferredBlock<DogBedBlock> DOG_BED = BLOCKS.register("dog_bed",
+            () -> new DogBedBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.RED_WOOL).noOcclusion()));
+    public static final DeferredBlock<KennelBlock> KENNEL = BLOCKS.register("kennel",
+            () -> new KennelBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.OAK_PLANKS).noOcclusion()));
 
     private ModBlocks() {
     }

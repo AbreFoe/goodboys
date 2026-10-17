@@ -33,8 +33,13 @@ public class DogGeoModel extends DefaultedEntityGeoModel<Dog> {
     @Override
     public void setCustomAnimations(Dog dog, long instanceId, AnimationState<Dog> state) {
         super.setCustomAnimations(dog, instanceId, state);
-        if (dog.isNapping() || dog.isDowned()) {
-            return; // asleep or out cold: the head stays where the animation puts it
+        // fade the look out while the dog is busy (sniffing, shaking, playing...) or lying down, and back in after
+        var actions = dog.getAnimatableInstanceCache().getManagerForId(instanceId).getAnimationControllers().get("actions");
+        boolean busy = actions != null && actions.isPlayingTriggeredAnimation();
+        boolean looking = !busy && !dog.isNapping() && !dog.isDowned() && !dog.isResting() && !dog.isChewing();
+        dog.lookWeight += ((looking ? 1.0F : 0.0F) - dog.lookWeight) * 0.12F;
+        if (dog.lookWeight < 0.01F) {
+            return; // the head stays where the animation puts it
         }
         GeoBone head = getAnimationProcessor().getBone("head");
         GeoBone body = getAnimationProcessor().getBone("body");
@@ -43,8 +48,8 @@ public class DogGeoModel extends DefaultedEntityGeoModel<Dog> {
         if (head == null || body == null || chest == null || data == null) {
             return;
         }
-        float yaw = Mth.clamp(data.netHeadYaw(), -70, 70) * Mth.DEG_TO_RAD;
-        float pitch = Mth.clamp(data.headPitch(), -40, 40) * Mth.DEG_TO_RAD;
+        float yaw = Mth.clamp(data.netHeadYaw(), -70, 70) * Mth.DEG_TO_RAD * dog.lookWeight;
+        float pitch = Mth.clamp(data.headPitch(), -40, 40) * Mth.DEG_TO_RAD * dog.lookWeight;
         float parentPitch = body.getRotX() + chest.getRotX();
 
         // head = undo the spine tilt, turn about vertical, re-apply the tilt, then the animated pose, then look up/down

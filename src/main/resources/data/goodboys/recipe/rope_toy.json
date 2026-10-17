@@ -1,0 +1,20 @@
+{
+  "type": "goodboys:dog_workbench",
+  "pattern": [
+    "S R",
+    " S ",
+    "R S"
+  ],
+  "key": {
+    "S": {
+      "item": "minecraft:string"
+    },
+    "R": {
+      "item": "minecraft:red_wool"
+    }
+  },
+  "result": {
+    "id": "goodboys:rope_toy",
+    "count": 1
+  }
+}
