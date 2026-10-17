@@ -23,7 +23,7 @@ final class DogLookHud {
         if (mc.player == null || mc.options.hideGui || mc.screen != null) {
             return;
         }
-        Dog dog = mc.crosshairPickEntity instanceof Dog d && d.isOwnedBy(mc.player) ? d : null;
+        Dog dog = mc.crosshairPickEntity instanceof Dog d && d.isOwnedBy(mc.player) && !CommandMenu.isOpen() ? d : null;
         fade = Mth.clamp(fade + (dog != null ? 0.15F : -0.1F) * delta.getRealtimeDeltaTicks() * 2, 0, 1);
         if (dog == null || fade <= 0.02F) {
             return;

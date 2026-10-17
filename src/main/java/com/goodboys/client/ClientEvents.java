@@ -34,6 +34,8 @@ public final class ClientEvents {
     static void register(IEventBus modBus) {
         modBus.addListener(ClientEvents::registerKeys);
         NeoForge.EVENT_BUS.addListener(ClientEvents::onClientTick);
+        NeoForge.EVENT_BUS.addListener(CommandMenu::onScroll);
+        NeoForge.EVENT_BUS.addListener(CommandMenu::onMouseButton);
         NeoForge.EVENT_BUS.addListener(CreateWorldOptions::onScreenInit);
         NeoForge.EVENT_BUS.addListener(CreateWorldOptions::onScreenRender);
     }
@@ -49,12 +51,17 @@ public final class ClientEvents {
                 openMenu(mc, mc.player);
             }
         }
+        CommandMenu.tick(mc);
     }
 
     private static void openMenu(Minecraft mc, LocalPlayer player) {
+        if (CommandMenu.isOpen()) {
+            CommandMenu.close();
+            return;
+        }
         Dog looked = lookedAtDog(player);
         if (looked != null) {
-            mc.setScreen(new DogCommandScreen(looked, 1));
+            CommandMenu.toggle(mc, looked, 1);
             return;
         }
         int pack = player.level().getEntitiesOfClass(Dog.class, player.getBoundingBox().inflate(ModNetwork.COMMAND_RADIUS),
@@ -63,7 +70,7 @@ public final class ClientEvents {
             player.displayClientMessage(Component.translatable("message.goodboys.no_dogs"), true);
             return;
         }
-        mc.setScreen(new DogCommandScreen(null, pack));
+        CommandMenu.toggle(mc, null, pack);
     }
 
     /** One of the player's dogs under the crosshair, further than the normal reach. */

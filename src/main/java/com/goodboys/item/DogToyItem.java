@@ -3,6 +3,9 @@ package com.goodboys.item;
 import java.util.List;
 import java.util.Locale;
 
+import com.goodboys.entity.Dog;
+import com.goodboys.entity.DogMode;
+
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundEvents;
@@ -38,6 +41,9 @@ public class DogToyItem extends Item {
         }
     }
 
+    /** Dogs this close to the player notice a throw. */
+    private static final double FETCH_NOTICE_RANGE = 32.0;
+
     private final Toy toy;
 
     public DogToyItem(Toy toy, Properties properties) {
@@ -63,6 +69,13 @@ public class DogToyItem extends Item {
             thrown.setPickUpDelay(40);
             thrown.setThrower(player);
             level.addFreshEntity(thrown);
+            if (toy == Toy.TENNIS_BALL) {
+                // every dog of yours that's free to play sees the throw and races for it
+                for (Dog dog : level.getEntitiesOfClass(Dog.class, player.getBoundingBox().inflate(FETCH_NOTICE_RANGE),
+                        d -> d.isOwnedBy(player) && !d.isOrderedToSit() && !d.isDowned() && d.getMode() != DogMode.GUARD)) {
+                    dog.noticeThrow(thrown);
+                }
+            }
             level.playSound(null, player.getX(), player.getY(), player.getZ(), SoundEvents.SNOWBALL_THROW, SoundSource.PLAYERS, 0.5F, 0.6F);
         }
         player.getCooldowns().addCooldown(this, 10);

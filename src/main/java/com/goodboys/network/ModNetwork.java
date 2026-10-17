@@ -14,6 +14,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.projectile.ProjectileUtil;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
@@ -48,7 +49,7 @@ public final class ModNetwork {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer player) {
                 DogCommand command = DogCommand.byId(payload.command());
-                if (command != null && command.available()) {
+                if (command != null) {
                     execute(player, command, payload.dogId());
                 }
             }
@@ -81,11 +82,21 @@ public final class ModNetwork {
                 return;
             }
         }
+        // FIND sniffs out whatever the owner holds up
+        ItemStack scent = player.getMainHandItem().isEmpty() ? player.getOffhandItem() : player.getMainHandItem();
         for (Dog dog : dogs) {
             dog.command(command, pos, target);
+            if (command == DogCommand.FIND) {
+                dog.startFind(scent);
+            }
         }
         Component who = dogs.size() == 1 ? dogs.get(0).getDisplayName() : Component.translatable("gui.goodboys.pack", dogs.size());
-        player.displayClientMessage(Component.translatable("message.goodboys.commanded", who, Component.translatable(command.translationKey())), true);
+        Component what = Component.translatable(command.translationKey());
+        if (command == DogCommand.FIND) {
+            what = Component.translatable("message.goodboys.find_what", what,
+                    scent.isEmpty() ? Component.translatable("message.goodboys.find_dropped") : scent.getHoverName());
+        }
+        player.displayClientMessage(Component.translatable("message.goodboys.commanded", who, what), true);
     }
 
     /** The one dog the owner looked at, or all of the owner's dogs in earshot. */

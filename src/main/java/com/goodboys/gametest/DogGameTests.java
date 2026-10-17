@@ -97,7 +97,7 @@ public class DogGameTests {
     @GameTest(template = "arena")
     public static void huntGoesForGame(GameTestHelper helper) {
         // hunting dogs stay with their owner, so this one needs an owner standing in the world
-        ServerPlayer owner = helper.makeMockServerPlayerInLevel();
+        ServerPlayer owner = TestPlayers.inLevel(helper);
         owner.moveTo(helper.absoluteVec(new Vec3(2.5, 2, 2.5)));
         Dog dog = helper.spawn(ModEntities.DOG.get(), 3, 2, 3);
         dog.tame(owner);
@@ -137,7 +137,7 @@ public class DogGameTests {
 
     @GameTest(template = "arena", timeoutTicks = 80)
     public static void packHoldsFiveDogsAndFreesSlots(GameTestHelper helper) {
-        ServerPlayer owner = helper.makeMockServerPlayerInLevel();
+        ServerPlayer owner = TestPlayers.inLevel(helper);
         owner.moveTo(helper.absoluteVec(new Vec3(4.5, 2, 4.5)));
         Dog[] dogs = new Dog[PackData.MAX_PACK_SIZE + 1];
         for (int i = 0; i < dogs.length; i++) {
@@ -198,7 +198,7 @@ public class DogGameTests {
 
     @GameTest(template = "arena")
     public static void happyDoggoIgnoresFallsAndItsOwner(GameTestHelper helper) {
-        ServerPlayer owner = helper.makeMockServerPlayerInLevel();
+        ServerPlayer owner = TestPlayers.inLevel(helper);
         Dog dog = helper.spawn(ModEntities.DOG.get(), 4, 2, 4);
         dog.tame(owner);
         DamageSources damage = helper.getLevel().damageSources();

@@ -25,6 +25,8 @@ public class DogToyGoal extends Goal {
     private enum Phase { FETCH, RETURN, SHAKE, CHASE, CHEW }
 
     private static final double SEARCH = 12.0;
+    /** A following dog leaves its chew bone or rope once the owner is this far away. */
+    private static final double OWNER_LEFT = 14.0;
 
     private final Dog dog;
     @Nullable
@@ -44,8 +46,16 @@ public class DogToyGoal extends Goal {
     @Override
     public boolean canUse() {
         if (!dog.isTame() || dog.isOrderedToSit() || dog.isNapping() || dog.isDowned() || dog.isShaking()
-                || dog.getTarget() != null || dog.isInWater() || dog.getToyCooldown() > 0
-                || !(dog.getMode() == DogMode.FOLLOW || dog.getMode() == DogMode.STAY)) {
+                || dog.getTarget() != null || dog.isInWater()) {
+            return false;
+        }
+        ItemEntity thrown = dog.takeThrownToy();
+        if (thrown != null && dog.getCarried().isEmpty()) {
+            target = thrown; // the owner just threw it: no dawdling, no range limit
+            toy = DogToyItem.toyOf(thrown.getItem());
+            return toy != null;
+        }
+        if (dog.getToyCooldown() > 0 || !(dog.getMode() == DogMode.FOLLOW || dog.getMode() == DogMode.STAY)) {
             return false;
         }
         if (!dog.getCarried().isEmpty()) {
@@ -66,7 +76,7 @@ public class DogToyGoal extends Goal {
     @Nullable
     private ItemEntity findToy() {
         List<ItemEntity> toys = dog.level().getEntitiesOfClass(ItemEntity.class, dog.getBoundingBox().inflate(SEARCH),
-                e -> e.isAlive() && DogToyItem.toyOf(e.getItem()) != null);
+                e -> e.isAlive() && DogToyItem.toyOf(e.getItem()) != null && !e.getTags().contains(Dog.RETURNED_TAG));
         BlockPos anchor = dog.getAnchor();
         ItemEntity best = null;
         double bestDist = Double.MAX_VALUE;
@@ -96,6 +106,7 @@ public class DogToyGoal extends Goal {
             dog.setExcited(toy == Toy.TENNIS_BALL);
         }
         dog.setResting(false);
+        dog.setFetching(phase == Phase.FETCH || phase == Phase.RETURN || phase == Phase.CHASE);
     }
 
     private Phase afterPickup() {
@@ -111,9 +122,15 @@ public class DogToyGoal extends Goal {
         if (done || dog.isOrderedToSit() || dog.isNapping() || dog.isDowned() || dog.getTarget() != null) {
             return false;
         }
+        // chewing and rope games stop when the owner walks off (fetching a throw goes on: it ends with the owner)
+        LivingEntity owner = dog.getOwner();
+        if (phase != Phase.FETCH && phase != Phase.RETURN && dog.getMode().followsOwner()
+                && owner != null && dog.distanceToSqr(owner) > OWNER_LEFT * OWNER_LEFT) {
+            return false;
+        }
         return switch (phase) {
             case FETCH, CHASE -> target != null && target.isAlive() && ticks < 400;
-            case RETURN -> !dog.getCarried().isEmpty() && ticks < 400;
+            case RETURN -> !dog.getCarried().isEmpty() && ticks < 600;
             case SHAKE -> true;
             case CHEW -> dog.isChewing() || ticks == 0;
         };
@@ -121,6 +138,7 @@ public class DogToyGoal extends Goal {
 
     @Override
     public void stop() {
+        dog.setFetching(false);
         dog.setExcited(false);
         dog.setChewing(false);
         if (!dog.getCarried().isEmpty() && phase != Phase.RETURN) {
@@ -164,6 +182,7 @@ public class DogToyGoal extends Goal {
             ticks = 0;
             pounced = false;
             phase = afterPickup();
+            dog.setFetching(phase == Phase.RETURN);
         }
     }
 
@@ -178,9 +197,17 @@ public class DogToyGoal extends Goal {
         if (ticks % 10 == 1) {
             dog.getNavigation().moveTo(owner, 1.3);
         }
-        if (dog.distanceToSqr(owner) < 2.4 * 2.4) {
-            Vec3 towards = owner.position().subtract(dog.position()).normalize().scale(0.18).add(0, 0.12, 0);
-            dog.dropCarried(towards); // "again! again!"
+        if (dog.distanceToSqr(owner) > 64 * 64) {
+            dog.dropCarried(Vec3.ZERO); // owner went off somewhere: give up
+            done = true;
+            return;
+        }
+        if (dog.distanceToSqr(owner) < 1.9 * 1.9) {
+            Vec3 towards = owner.position().subtract(dog.position()).normalize().scale(0.22).add(0, 0.12, 0);
+            ItemEntity ball = dog.dropCarried(towards); // "again! again!"
+            if (ball != null) {
+                ball.addTag(Dog.RETURNED_TAG); // stays at the owner's feet until thrown again
+            }
             done = true;
             dog.triggerAnim("actions", "bark");
             dog.playSound(SoundEvents.WOLF_AMBIENT, 0.8F, 1.3F);
@@ -201,6 +228,7 @@ public class DogToyGoal extends Goal {
                 return;
             }
             phase = Phase.CHASE;
+            dog.setFetching(true);
             ticks = 0;
         }
     }

@@ -47,6 +47,7 @@ public class GoodBoysClient {
     private static void registerHud(RegisterGuiLayersEvent event) {
         event.registerAboveAll(GoodBoys.id("tracker"), TrackerHud::render);
         event.registerAboveAll(GoodBoys.id("look"), DogLookHud::render);
+        event.registerAboveAll(GoodBoys.id("command_menu"), CommandMenu::render);
     }
 
     private static void registerRenderers(EntityRenderersEvent.RegisterRenderers event) {

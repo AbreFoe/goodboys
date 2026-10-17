@@ -64,12 +64,18 @@ public class KennelBlock extends HorizontalDirectionalBlock implements DogRestBl
 
     @Override
     protected boolean isPathfindable(BlockState state, PathComputationType type) {
-        return true;
+        return false; // paths go round it; a dog walks in through the doorway on its own (DogRestSpotGoal)
     }
 
     @Override
     public Vec3 restPosition(BlockState state, BlockPos pos) {
         return new Vec3(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5);
+    }
+
+    @Override
+    public Vec3 approachPosition(BlockState state, BlockPos pos) {
+        BlockPos front = pos.relative(state.getValue(FACING));
+        return new Vec3(front.getX() + 0.5, front.getY(), front.getZ() + 0.5);
     }
 
     @Override

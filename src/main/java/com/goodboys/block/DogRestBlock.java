@@ -9,6 +9,11 @@ public interface DogRestBlock {
     /** Where the dog's feet go. */
     Vec3 restPosition(BlockState state, BlockPos pos);
 
+    /** Where to walk to before stepping onto / into the spot (in front of a kennel's doorway). */
+    default Vec3 approachPosition(BlockState state, BlockPos pos) {
+        return restPosition(state, pos);
+    }
+
     /** Which way the dog faces when lying there (degrees), or NaN for "any". */
     float restYaw(BlockState state);
 

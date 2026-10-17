@@ -23,6 +23,8 @@ public class DogRestSpotGoal extends Goal {
     @Nullable
     private BlockPos spot;
     private int ticks;
+    /** At the doorway (or next to the bed): walking the last bit straight in, past the pathfinder. */
+    private boolean steppingIn;
 
     public DogRestSpotGoal(Dog dog) {
         this.dog = dog;
@@ -56,11 +58,12 @@ public class DogRestSpotGoal extends Goal {
     @Override
     public void start() {
         ticks = 0;
+        steppingIn = false;
         moveTo();
     }
 
     private void moveTo() {
-        Vec3 p = restPos();
+        Vec3 p = approachPos();
         if (p != null) {
             dog.getNavigation().moveTo(p.x, p.y, p.z, 1.0);
         }
@@ -70,6 +73,12 @@ public class DogRestSpotGoal extends Goal {
     private Vec3 restPos() {
         BlockState state = dog.level().getBlockState(spot);
         return state.getBlock() instanceof DogRestBlock rest ? rest.restPosition(state, spot) : null;
+    }
+
+    @Nullable
+    private Vec3 approachPos() {
+        BlockState state = dog.level().getBlockState(spot);
+        return state.getBlock() instanceof DogRestBlock rest ? rest.approachPosition(state, spot) : null;
     }
 
     @Override
@@ -95,17 +104,35 @@ public class DogRestSpotGoal extends Goal {
     public void tick() {
         ticks++;
         Vec3 p = restPos();
-        if (p == null) {
+        // Settling makes the dog immobile, which skips the goal selector, so this goal is never told to stop
+        // and gets ticked once more afterwards. Already lying there: nothing left to do.
+        if (p == null || dog.getRestSpot() != null) {
             return;
-        }
-        if (ticks % 20 == 0) {
-            moveTo();
         }
         double dx = dog.getX() - p.x;
         double dz = dog.getZ() - p.z;
         double flat = dx * dx + dz * dz;
-        // close enough: hop into place (kennel walls can make the last step fiddly for the pathfinder)
-        if (flat < 0.3 * 0.3 || ticks > 60 && flat < 1.6 * 1.6 && dog.getNavigation().isDone()) {
+        if (!steppingIn) {
+            if (ticks % 20 == 0) {
+                moveTo();
+            }
+            Vec3 a = approachPos();
+            double ax = dog.getX() - a.x;
+            double az = dog.getZ() - a.z;
+            double fromApproach = ax * ax + az * az;
+            boolean openAllRound = a.distanceToSqr(p) < 0.01; // a bed, not a kennel with walls round it
+            // near enough to the doorway / bed to go straight in
+            if (fromApproach < 0.6 * 0.6 || openAllRound && flat < 1.2 * 1.2 || ticks > 60 && fromApproach < 1.6 * 1.6 && dog.getNavigation().isDone()) {
+                steppingIn = true;
+                ticks = Math.min(ticks, 200);
+                dog.getNavigation().stop();
+            }
+            return;
+        }
+        dog.getMoveControl().setWantedPosition(p.x, p.y, p.z, 0.8);
+        dog.getLookControl().setLookAt(p.x, dog.getEyeY(), p.z);
+        // in place, or as good as (the doorway can make the last step fiddly): hop into position
+        if (flat < 0.3 * 0.3 || flat < 1.0 && ticks % 40 == 0) {
             dog.settleAt(spot, nightWait() && !dog.wantsRestSpot());
         }
     }

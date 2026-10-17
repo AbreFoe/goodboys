@@ -11,6 +11,7 @@ import com.goodboys.block.DogRestBlock;
 import com.goodboys.entity.ai.DogAreaGoal;
 import com.goodboys.entity.ai.DogBegGoal;
 import com.goodboys.entity.ai.DogPlayGoal;
+import com.goodboys.entity.ai.DogFindGoal;
 import com.goodboys.entity.ai.DogRestSpotGoal;
 import com.goodboys.entity.ai.DogToyGoal;
 import com.goodboys.item.DogAccessoryItem;
@@ -216,6 +217,14 @@ public class Dog extends TamableAnimal implements GeoEntity {
     private int downedAge;
     // toys, rest spots, resting
     private int toyCooldown;
+    /** A ball the owner just threw: chase it now, however far it went. */
+    @Nullable
+    private ItemEntity thrownToy;
+    /** Running after a toy or bringing it back: following the owner waits till it's done. */
+    private boolean fetching;
+    /** FIND in progress: what the owner held up (empty = anything dropped), null when not searching. */
+    @Nullable
+    private ItemStack findScent;
     private int chewTicks;
     private int stillTicks;
     private int restTicks;
@@ -227,6 +236,7 @@ public class Dog extends TamableAnimal implements GeoEntity {
     private boolean restSpotIsAuto;
     private boolean wantsRestSpot;
     private int settleTicks;
+    private int settleCount;
     private int restHealTicks;
     private String currentAction = "";
     /** Client side: how much the head follows the look target (eased in/out by DogGeoModel). */
@@ -271,16 +281,17 @@ public class Dog extends TamableAnimal implements GeoEntity {
             }
         });
         goalSelector.addGoal(4, new LeapAtTargetGoal(this, 0.4F));
+        goalSelector.addGoal(4, new DogFindGoal(this));
         goalSelector.addGoal(5, new MeleeAttackGoal(this, 1.0, true));
         goalSelector.addGoal(6, new FollowOwnerGoal(this, 1.0, 10.0F, 2.0F) {
             @Override
             public boolean canUse() {
-                return getMode().followsOwner() && super.canUse();
+                return getMode().followsOwner() && !fetching && super.canUse();
             }
 
             @Override
             public boolean canContinueToUse() {
-                return getMode().followsOwner() && super.canContinueToUse();
+                return getMode().followsOwner() && !fetching && super.canContinueToUse();
             }
         });
         goalSelector.addGoal(6, new DogAreaGoal(this));
@@ -292,7 +303,7 @@ public class Dog extends TamableAnimal implements GeoEntity {
         });
         goalSelector.addGoal(5, new DogRestSpotGoal(this));
         goalSelector.addGoal(7, new DogPlayGoal(this));
-        goalSelector.addGoal(7, new DogToyGoal(this));
+        goalSelector.addGoal(5, new DogToyGoal(this)); // above following, so a long throw still gets fetched
         goalSelector.addGoal(8, new WaterAvoidingRandomStrollGoal(this, 1.0) {
             @Override
             public boolean canUse() {
@@ -815,7 +826,8 @@ public class Dog extends TamableAnimal implements GeoEntity {
         setChewing(false);
         restSpot = null;
         wantsRestSpot = false;
-        if (command != DogCommand.FIND && !getCarried().isEmpty()) {
+        findScent = null;
+        if (!getCarried().isEmpty()) {
             dropCarried(Vec3.ZERO);
         }
         if (command == DogCommand.SIT && findFreeRestSpot(this, blockPosition(), 6) != null) {
@@ -826,7 +838,7 @@ public class Dog extends TamableAnimal implements GeoEntity {
             setTarget(null);
             return;
         }
-        if (command != DogCommand.SIT && command != DogCommand.FIND) {
+        if (command != DogCommand.SIT) {
             triggerAnim("actions", "bark"); // "on it!"
             playSound(SoundEvents.WOLF_AMBIENT, 0.6F, 1.15F + random.nextFloat() * 0.2F);
         }
@@ -837,11 +849,13 @@ public class Dog extends TamableAnimal implements GeoEntity {
             setTarget(null);
             return;
         }
-        if (command == DogCommand.FIND) {
-            return; // not implemented yet
-        }
         setOrderedToSit(false);
         setInSittingPose(false);
+        if (command == DogCommand.FIND) {
+            setTarget(null);
+            navigation.stop();
+            return; // the search itself starts with startFind (the owner's held item is the scent)
+        }
         switch (command) {
             case FOLLOW, HUNT -> {
                 setMode(command == DogCommand.HUNT ? DogMode.HUNT : DogMode.FOLLOW);
@@ -1071,6 +1085,54 @@ public class Dog extends TamableAnimal implements GeoEntity {
         toyCooldown = ticks;
     }
 
+    /** Tag on a ball a dog has brought back: it lies there until the owner throws it again. */
+    public static final String RETURNED_TAG = "goodboys_returned";
+
+    /** The owner threw a ball: go get it. */
+    public void noticeThrow(ItemEntity toy) {
+        thrownToy = toy;
+    }
+
+    /** The ball the owner threw, once (it is handed over to the toy goal). */
+    @Nullable
+    public ItemEntity takeThrownToy() {
+        ItemEntity toy = thrownToy;
+        thrownToy = null;
+        return toy != null && toy.isAlive() ? toy : null;
+    }
+
+    /** Starts a FIND search for {@code scent} (empty: whatever got dropped nearby). */
+    public void startFind(ItemStack scent) {
+        findScent = scent.copyWithCount(1);
+    }
+
+    public boolean isFinding() {
+        return findScent != null;
+    }
+
+    public ItemStack getFindScent() {
+        return findScent != null ? findScent : ItemStack.EMPTY;
+    }
+
+    public void endFind() {
+        findScent = null;
+    }
+
+    /** Takes a whole stack lying on the ground into the mouth (FIND brings things back in one go). */
+    public void pickUpAll(ItemEntity item) {
+        setCarried(item.getItem().copy());
+        item.discard();
+        playSound(SoundEvents.ITEM_PICKUP, 0.4F, 1.4F);
+    }
+
+    public boolean isFetching() {
+        return fetching;
+    }
+
+    public void setFetching(boolean fetching) {
+        this.fetching = fetching;
+    }
+
     /** Takes one item from a stack lying on the ground into the mouth. */
     public void pickUp(ItemEntity item) {
         ItemStack stack = item.getItem();
@@ -1108,6 +1170,11 @@ public class Dog extends TamableAnimal implements GeoEntity {
     @Nullable
     public BlockPos getRestSpot() {
         return restSpot;
+    }
+
+    /** How many times this dog has turned round and lain down on a spot (for tests). */
+    public int getSettleCount() {
+        return settleCount;
     }
 
     public boolean wantsRestSpot() {
@@ -1165,6 +1232,7 @@ public class Dog extends TamableAnimal implements GeoEntity {
         restSpotIsAuto = auto;
         wantsRestSpot = false;
         settleTicks = SETTLE_TICKS;
+        settleCount++;
         setResting(false);
         triggerAnim("actions", "settle");
     }

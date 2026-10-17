@@ -5,7 +5,7 @@ import java.util.Locale;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 
-/** Everything the owner can tell a dog from the command menu. Order = order around the wheel, clockwise from the top. */
+/** Everything the owner can tell a dog from the command menu. Order = order in the command menu. */
 public enum DogCommand {
     FOLLOW(Items.LEAD),
     STAY(Items.OAK_SIGN),
@@ -14,27 +14,16 @@ public enum DogCommand {
     GO_TO(Items.COMPASS),
     ATTACK(Items.IRON_SWORD),
     HUNT(Items.BOW),
-    FIND(Items.SPYGLASS, false);
+    FIND(Items.SPYGLASS);
 
     private final Item icon;
-    private final boolean available;
 
     DogCommand(Item icon) {
-        this(icon, true);
-    }
-
-    DogCommand(Item icon, boolean available) {
         this.icon = icon;
-        this.available = available;
     }
 
     public Item icon() {
         return icon;
-    }
-
-    /** Not every command is implemented yet; the menu shows the rest greyed out. */
-    public boolean available() {
-        return available;
     }
 
     public String translationKey() {
