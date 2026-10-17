@@ -175,6 +175,7 @@ public class Dog extends TamableAnimal implements GeoEntity {
     private static final RawAnimation TAIL_WAG = RawAnimation.begin().thenLoop("animation.dog.tail_wag");
     private static final RawAnimation HEAD_TILT = RawAnimation.begin().thenLoop("animation.dog.head_tilt");
     private static final RawAnimation KNOCKED_OUT = RawAnimation.begin().thenLoop("animation.dog.knocked_out");
+    private static final RawAnimation BLINK = RawAnimation.begin().thenLoop("animation.dog.blink");
 
     private final AnimatableInstanceCache geoCache = GeckoLibUtil.createInstanceCache(this);
     private int sitTicks;
@@ -257,8 +258,28 @@ public class Dog extends TamableAnimal implements GeoEntity {
             }
         });
         goalSelector.addGoal(9, new DogBegGoal(this, 8.0F));
-        goalSelector.addGoal(10, new LookAtPlayerGoal(this, Player.class, 8.0F));
-        goalSelector.addGoal(10, new RandomLookAroundGoal(this));
+        goalSelector.addGoal(10, new LookAtPlayerGoal(this, Player.class, 8.0F) {
+            @Override
+            public boolean canUse() {
+                return !isNapping() && !isDowned() && super.canUse();
+            }
+
+            @Override
+            public boolean canContinueToUse() {
+                return !isNapping() && !isDowned() && super.canContinueToUse();
+            }
+        });
+        goalSelector.addGoal(10, new RandomLookAroundGoal(this) {
+            @Override
+            public boolean canUse() {
+                return !isNapping() && !isDowned() && super.canUse();
+            }
+
+            @Override
+            public boolean canContinueToUse() {
+                return !isNapping() && !isDowned() && super.canContinueToUse();
+            }
+        });
 
         // defending the owner only while with them; a guard or a waiting dog keeps its post
         targetSelector.addGoal(1, new OwnerHurtByTargetGoal(this) {
@@ -1291,6 +1312,9 @@ public class Dog extends TamableAnimal implements GeoEntity {
         controllers.add(new AnimationController<>(this, "body", 5, this::bodyAnimation));
         controllers.add(new AnimationController<>(this, "tail", 5, this::tailAnimation));
         controllers.add(new AnimationController<>(this, "head", 5, this::headAnimation));
+        // eyes blink while awake; asleep or knocked out the body clip keeps them shut
+        controllers.add(new AnimationController<>(this, "eyes", 0,
+                state -> isNapping() || isDowned() ? PlayState.STOP : state.setAndContinue(BLINK)));
         controllers.add(new AnimationController<>(this, "actions", 3, state -> PlayState.STOP)
                 .triggerableAnim("bark", action("bark"))
                 .triggerableAnim("land", action("land"))

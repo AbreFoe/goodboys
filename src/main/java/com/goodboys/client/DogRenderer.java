@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 
-import com.goodboys.GoodBoys;
 import com.goodboys.entity.Dog;
 import com.goodboys.item.DogAccessoryItem;
 import com.goodboys.item.DogAccessoryItem.Accessory;
@@ -19,12 +18,10 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.FastColor;
 import net.minecraft.world.item.ItemStack;
 import software.bernie.geckolib.cache.object.BakedGeoModel;
 import software.bernie.geckolib.cache.object.GeoBone;
-import software.bernie.geckolib.model.DefaultedEntityGeoModel;
 import software.bernie.geckolib.renderer.GeoEntityRenderer;
 
 /**
@@ -36,12 +33,7 @@ public class DogRenderer extends GeoEntityRenderer<Dog> {
     private final Map<BakedGeoModel, List<GeoBone>> gearBones = new WeakHashMap<>();
 
     public DogRenderer(EntityRendererProvider.Context context) {
-        super(context, new DefaultedEntityGeoModel<Dog>(GoodBoys.id("dog"), "head") {
-            @Override
-            public ResourceLocation getTextureResource(Dog dog) {
-                return dog.getVariant().texture(); // coat colour
-            }
-        });
+        super(context, new DogGeoModel());
         shadowRadius = 0.5F;
     }
 
